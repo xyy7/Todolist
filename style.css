@@ -225,7 +225,7 @@ li .delete-btn {
         flex-direction: column;
     }
     
-    .filter-buttons {
+a    .filter-buttons {
         flex-wrap: nowrap;
     }
     

@@ -102,8 +102,9 @@ class TodoApp {
     filterTodos() {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        // 计算本周一作为周开始(day=1)
         const weekStart = new Date(today);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        weekStart.setDate(weekStart.getDate() - (weekStart.getDay() === 0 ? 6 : weekStart.getDay() - 1));
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -221,10 +222,10 @@ class TodoApp {
         // 清除今日已完成任务
         this.clearCompletedTasks('today');
         
-        // 检查是否需要周重置
+        // 检查是否需要周重置(周一)
         this.checkWeekReset();
 
-        // 检查是否需要月重置
+        // 检查是否需要月重置(1号)
         this.checkMonthReset();
         
         // 检查是否需要转移昨日任务
@@ -270,11 +271,11 @@ class TodoApp {
         localStorage.setItem('lastResetMonth', `${currentYear}-${currentMonth}`);
     }
 
-    // 检查是否为周日或周一
+    // 检查是否为周一(每周的第一天)
     isNewWeek() {
         const now = new Date();
-        const day = now.getDay(); // 0是周日，1是周一
-        return day === 0 || day === 1;
+        const day = now.getDay(); // 1是周一
+        return day === 1;
     }
 
     // 获取当前周数(基于年份和周数)
@@ -287,8 +288,11 @@ class TodoApp {
 
     // 检查并执行周重置
     checkWeekReset() {
-        if (!this.isNewWeek()) return;
-
+        // 检查是否为周一且不是本周已重置过
+        const currentDate = new Date();
+        const day = currentDate.getDay();
+        if (day !== 1) return; // 只在周一重置
+        
         const currentWeek = this.getCurrentWeekNumber();
         const lastResetWeek = localStorage.getItem('lastResetWeek');
         
@@ -300,8 +304,9 @@ class TodoApp {
 
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        // 计算本周一作为周开始(day=1)
         const weekStart = new Date(today);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        weekStart.setDate(weekStart.getDate() - (weekStart.getDay() === 0 ? 6 : weekStart.getDay() - 1));
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
 
