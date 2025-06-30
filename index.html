@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>移动端待办事项</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>待办事项</h1>
+        
+        <div class="add-todo">
+            <input type="text" id="todo-input" placeholder="输入待办事项...">
+            <input type="date" id="todo-date" value="">
+            <button id="add-btn">添加</button>
+        </div>
+
+        <div class="filter-buttons">
+            <button class="filter-btn active" data-filter="today">今天</button>
+            <button class="filter-btn" data-filter="week">本周</button>
+            <button class="filter-btn" data-filter="month">本月</button>
+            <button class="filter-btn" data-filter="all">全部</button>
+        </div>
+
+        <div class="todos-container">
+            <h2>待办事项</h2>
+            <ul id="pending-list"></ul>
+
+            <h2>已完成事项</h2>
+            <ul id="completed-list"></ul>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
