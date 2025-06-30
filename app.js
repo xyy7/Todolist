@@ -124,6 +124,20 @@ class TodoApp {
         const completedTodos = filteredTodos.filter(t => t.completed)
             .sort((a, b) => new Date(b.completedTime) - new Date(a.completedTime));
 
+        // 检查今日任务是否全部完成
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayTasks = this.todos.filter(todo => {
+            const plannedDate = new Date(todo.plannedTime);
+            return plannedDate >= today && plannedDate < new Date(today.getTime() + 86400000);
+        });
+
+        if (todayTasks.length > 0 && todayTasks.every(t => t.completed)) {
+            this.showEncouragement(todayTasks.length);
+        } else {
+            this.hideEncouragement();
+        }
+
         // 移除所有可能存在的月份标题
         const existingTitle = this.pendingList.previousElementSibling;
         if (existingTitle && existingTitle.tagName === 'H3') {
@@ -222,6 +236,24 @@ class TodoApp {
             // 显示弹窗询问用户
             this.showTransferModal(yesterdayTasks, today.toISOString().split('T')[0]);
         }
+    }
+
+    showEncouragement(count) {
+        const messages = [
+            `太棒了！完成了${count}个任务！`,
+            `完美！今日${count}项任务全部搞定！`,
+            `效率真高！已完成${count}项工作！`
+        ];
+        const text = messages[Math.floor(Math.random() * messages.length)];
+        
+        const el = document.getElementById('encouragement');
+        const textEl = document.getElementById('encouragement-text');
+        textEl.textContent = text;
+        el.classList.remove('hidden');
+    }
+
+    hideEncouragement() {
+        document.getElementById('encouragement').classList.add('hidden');
     }
 
     showTransferModal(tasks, todayDate) {
