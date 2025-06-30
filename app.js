@@ -186,6 +186,75 @@ class TodoApp {
     loadTodos() {
         const savedTodos = localStorage.getItem('todos');
         this.todos = savedTodos ? JSON.parse(savedTodos) : [];
+        
+        // 检查是否需要转移昨日任务
+        this.checkYesterdayTasks();
+    }
+
+    checkYesterdayTasks() {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        // 查找昨日未完成任务
+        const yesterdayTasks = this.todos.filter(todo => {
+            const plannedDate = new Date(todo.plannedTime);
+            return !todo.completed &&
+                   plannedDate >= yesterday &&
+                   plannedDate < today;
+        });
+
+        if (yesterdayTasks.length === 0) return;
+
+        // 检查是否有记住的选择
+        const autoTransfer = localStorage.getItem('autoTransfer');
+        if (autoTransfer === 'true') {
+            // 自动转移任务
+            const todayStr = today.toISOString().split('T')[0];
+            yesterdayTasks.forEach(task => {
+                task.plannedTime = todayStr;
+            });
+            this.saveTodos();
+            // 强制刷新显示
+            this.setFilter(this.currentFilter);
+        } else if (autoTransfer !== 'false') {
+            // 显示弹窗询问用户
+            this.showTransferModal(yesterdayTasks, today.toISOString().split('T')[0]);
+        }
+    }
+
+    showTransferModal(tasks, todayDate) {
+        const modal = document.getElementById('transfer-modal');
+        const yesBtn = document.getElementById('transfer-yes');
+        const noBtn = document.getElementById('transfer-no');
+        const rememberCheck = document.getElementById('remember-choice');
+
+        modal.style.display = 'flex';
+
+        yesBtn.onclick = () => {
+            // 转移任务到今日
+            tasks.forEach(task => {
+                // 更新计划时间为今天并格式化为YYYY-MM-DD
+                const today = new Date();
+                task.plannedTime = today.toISOString().split('T')[0];
+            });
+            this.saveTodos();
+            if (rememberCheck.checked) {
+                localStorage.setItem('autoTransfer', 'true');
+            }
+            modal.style.display = 'none';
+            this.renderTodos();
+            // 强制刷新显示
+            this.setFilter(this.currentFilter);
+        };
+
+        noBtn.onclick = () => {
+            if (rememberCheck.checked) {
+                localStorage.setItem('autoTransfer', 'false');
+            }
+            modal.style.display = 'none';
+        };
     }
 }
 
