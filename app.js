@@ -87,18 +87,26 @@ class TodoApp {
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const weekStart = new Date(today);
         weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
         return this.todos.filter(todo => {
-            const todoDate = new Date(todo.completed ? todo.completedTime : todo.plannedTime);
+            const plannedDate = new Date(todo.plannedTime);
             
             switch(this.currentFilter) {
                 case 'today':
-                    return todoDate >= today;
+                    return plannedDate >= today && plannedDate < new Date(today.getTime() + 86400000);
                 case 'week':
-                    return todoDate >= weekStart;
-                case 'month':
-                    return todoDate >= monthStart;
+                    return plannedDate >= weekStart && plannedDate <= weekEnd;
+                case 'month': {
+                    const plannedMonth = plannedDate.getMonth();
+                    const plannedYear = plannedDate.getFullYear();
+                    const currentMonth = now.getMonth();
+                    const currentYear = now.getFullYear();
+                    return plannedMonth === currentMonth && plannedYear === currentYear;
+                }
                 default:
                     return true;
             }
@@ -115,6 +123,21 @@ class TodoApp {
         
         const completedTodos = filteredTodos.filter(t => t.completed)
             .sort((a, b) => new Date(b.completedTime) - new Date(a.completedTime));
+
+        // 移除所有可能存在的月份标题
+        const existingTitle = this.pendingList.previousElementSibling;
+        if (existingTitle && existingTitle.tagName === 'H3') {
+            existingTitle.remove();
+        }
+
+        // 仅在本月筛选时显示月份标题
+        if (this.currentFilter === 'month') {
+            const now = new Date();
+            const monthTitle = document.createElement('h3');
+            monthTitle.className = 'month-title';
+            monthTitle.textContent = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+            this.pendingList.before(monthTitle);
+        }
 
         pendingTodos.forEach(todo => this.renderTodo(todo, this.pendingList));
         completedTodos.forEach(todo => this.renderTodo(todo, this.completedList));
@@ -151,12 +174,9 @@ class TodoApp {
 
     formatTime(isoString) {
         const date = new Date(isoString);
-        return date.toLocaleDateString('zh-CN', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        const weekday = weekdays[date.getDay()];
+        return `${date.getMonth()+1}月${date.getDate()}日 ${weekday}`;
     }
 
     saveTodos() {

@@ -132,6 +132,13 @@ li .delete-btn {
     color: #999;
 }
 
+.month-title {
+    color: var(--primary-color);
+    margin: 10px 0;
+    text-align: center;
+    font-size: 18px;
+}
+
 @media (max-width: 480px) {
     .add-todo {
         flex-direction: column;
