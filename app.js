@@ -219,9 +219,6 @@ class TodoApp {
         const savedTodos = localStorage.getItem('todos');
         this.todos = savedTodos ? JSON.parse(savedTodos) : [];
         
-        // 清除今日已完成任务
-        this.clearCompletedTasks('today');
-        
         // 检查是否需要周重置(周一)
         this.checkWeekReset();
 
@@ -427,7 +424,7 @@ class TodoApp {
         el.classList.remove('hidden');
 
         // 触发撒花特效
-        this.createConfetti();
+        // this.createConfetti();
     }
 
     createConfetti() {
