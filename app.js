@@ -425,6 +425,37 @@ class TodoApp {
         const textEl = document.getElementById('encouragement-text');
         textEl.textContent = text;
         el.classList.remove('hidden');
+
+        // 触发撒花特效
+        this.createConfetti();
+    }
+
+    createConfetti() {
+        // 烟花爆炸效果
+        confetti({
+            particleCount: 150,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff']
+        });
+
+        // 添加一些飘落的彩带
+        setTimeout(() => {
+            confetti({
+                particleCount: 50,
+                angle: 60,
+                spread: 55,
+                origin: { x: 0 },
+                colors: ['#ff0000', '#00ff00', '#0000ff']
+            });
+            confetti({
+                particleCount: 50,
+                angle: 120,
+                spread: 55,
+                origin: { x: 1 },
+                colors: ['#ffff00', '#ff00ff', '#00ffff']
+            });
+        }, 250);
     }
 
     hideEncouragement() {
