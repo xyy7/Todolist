@@ -2,11 +2,15 @@
 class TodoApp {
     constructor() {
         this.todos = [];
-        this.currentFilter = 'today';
+        this.currentFilter = localStorage.getItem('currentFilter') || 'today';
         this.initElements();
         this.loadTodos();
         this.setupEventListeners();
         this.setDefaultDate();
+        // 初始化时设置按钮高亮
+        this.filterButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.filter === this.currentFilter);
+        });
         this.renderTodos();
     }
 
@@ -21,10 +25,10 @@ class TodoApp {
 
     setDefaultDate() {
         const now = new Date();
-        // 处理时区问题，确保获取本地日期
-        const localDate = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-        const today = localDate.toISOString().split('T')[0];
-        this.todoDate.value = today;
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        this.todoDate.value = `${year}-${month}-${day}`;
     }
 
     checkDateChange() {
@@ -53,10 +57,8 @@ class TodoApp {
 
     addTodo() {
         const content = this.todoInput.value.trim();
-        const plannedTime = this.todoDate.value;
-        
+        const plannedTime = this.todoDate.value; // 直接存YYYY-MM-DD
         if (!content) return;
-
         const newTodo = {
             id: Date.now().toString(),
             content,
@@ -64,11 +66,9 @@ class TodoApp {
             completed: false,
             completedTime: null
         };
-
         this.todos.push(newTodo);
         this.saveTodos();
         this.renderTodos();
-        
         this.todoInput.value = '';
         this.todoInput.focus();
         this.setDefaultDate();
@@ -77,11 +77,20 @@ class TodoApp {
     toggleTodo(id) {
         const todo = this.todos.find(t => t.id === id);
         if (!todo) return;
-
         todo.completed = !todo.completed;
         todo.completedTime = todo.completed ? new Date().toISOString() : null;
-        
         this.saveTodos();
+        // 检查是否是最后一个未完成任务被完成
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayTasks = this.todos.filter(todo => {
+            const [y, m, d] = todo.plannedTime.split('-').map(Number);
+            const plannedDate = new Date(y, m - 1, d);
+            return plannedDate >= today && plannedDate < new Date(today.getTime() + 86400000);
+        });
+        if (todayTasks.length > 0 && todayTasks.every(t => t.completed)) {
+            this.showEncouragement(todayTasks.length);
+        }
         this.renderTodos();
     }
 
@@ -93,6 +102,8 @@ class TodoApp {
 
     setFilter(filter) {
         this.currentFilter = filter;
+        localStorage.setItem('currentFilter', filter);
+        console.info(`[调试] 当前过滤条件已记住: ${filter}`);
         this.filterButtons.forEach(btn => {
             btn.classList.toggle('active', btn.dataset.filter === filter);
         });
@@ -138,31 +149,15 @@ class TodoApp {
         const filteredTodos = this.filterTodos();
         const pendingTodos = filteredTodos.filter(t => !t.completed)
             .sort((a, b) => new Date(a.plannedTime) - new Date(b.plannedTime));
-        
         const completedTodos = filteredTodos.filter(t => t.completed)
             .sort((a, b) => new Date(b.completedTime) - new Date(a.completedTime));
 
-        // 检查今日任务是否全部完成
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const todayTasks = this.todos.filter(todo => {
-            const plannedDate = new Date(todo.plannedTime);
-            return plannedDate >= today && plannedDate < new Date(today.getTime() + 86400000);
-        });
-
-        if (todayTasks.length > 0 && todayTasks.every(t => t.completed)) {
-            this.showEncouragement(todayTasks.length);
-        } else {
-            this.hideEncouragement();
+        // 仅在本月筛选时显示月份标题，且只插入一行
+        // 先移除所有已存在的月份标题
+        const prev = this.pendingList.previousElementSibling;
+        if (prev && prev.classList && prev.classList.contains('month-title')) {
+            prev.remove();
         }
-
-        // 移除所有可能存在的月份标题
-        const existingTitle = this.pendingList.previousElementSibling;
-        if (existingTitle && existingTitle.tagName === 'H3') {
-            existingTitle.remove();
-        }
-
-        // 仅在本月筛选时显示月份标题
         if (this.currentFilter === 'month') {
             const now = new Date();
             const monthTitle = document.createElement('h3');
@@ -170,42 +165,52 @@ class TodoApp {
             monthTitle.textContent = `${now.getFullYear()}年${now.getMonth() + 1}月`;
             this.pendingList.before(monthTitle);
         }
-
         pendingTodos.forEach(todo => this.renderTodo(todo, this.pendingList));
         completedTodos.forEach(todo => this.renderTodo(todo, this.completedList));
     }
 
     renderTodo(todo, list) {
         const li = document.createElement('li');
-        
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = todo.completed;
         checkbox.addEventListener('change', () => this.toggleTodo(todo.id));
-        
         const content = document.createElement('span');
         content.className = 'todo-content' + (todo.completed ? ' completed' : '');
         content.textContent = todo.content;
-        
-        const time = document.createElement('span');
-        time.className = 'todo-time';
-        time.textContent = this.formatTime(todo.completed ? todo.completedTime : todo.plannedTime);
-        
+        li.appendChild(checkbox);
+        li.appendChild(content);
+        // 未完成事项在所有筛选下都显示时间
+        if (!todo.completed) {
+            const time = document.createElement('span');
+            time.className = 'todo-time';
+            time.textContent = this.formatTime(todo.plannedTime);
+            li.appendChild(time);
+        }
+        if (todo.completed) {
+            const time = document.createElement('span');
+            time.className = 'todo-time';
+            time.textContent = this.formatTime(todo.completedTime);
+            li.appendChild(time);
+        }
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
         deleteBtn.innerHTML = '×';
         deleteBtn.addEventListener('click', () => this.deleteTodo(todo.id));
-        
-        li.appendChild(checkbox);
-        li.appendChild(content);
-        li.appendChild(time);
         li.appendChild(deleteBtn);
-        
         list.appendChild(li);
     }
 
     formatTime(isoString) {
-        const date = new Date(isoString);
+        if (!isoString) return '';
+        // 只处理YYYY-MM-DD或ISO字符串
+        let date;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(isoString)) {
+            const [y, m, d] = isoString.split('-').map(Number);
+            date = new Date(y, m - 1, d);
+        } else {
+            date = new Date(isoString);
+        }
         const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
         const weekday = weekdays[date.getDay()];
         return `${date.getMonth()+1}月${date.getDate()}日 ${weekday}`;
@@ -328,39 +333,39 @@ class TodoApp {
 
     checkYesterdayTasks() {
         const now = new Date();
-        // 统一使用本地时区处理
-        const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-        const today = new Date(localNow.getFullYear(), localNow.getMonth(), localNow.getDate());
+        const year = now.getFullYear();
+        const month = now.getMonth() + 1;
+        const day = now.getDate();
+        const todayStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const today = new Date(year, month - 1, day);
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
-
-        // 查找昨日未完成任务
+        const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+        console.log('[调试] 系统当前日期:', todayStr, '昨日:', yesterdayStr);
         const yesterdayTasks = this.todos.filter(todo => {
-            // 统一使用本地时区处理计划日期
-            const plannedDate = new Date(new Date(todo.plannedTime).getTime() - new Date(todo.plannedTime).getTimezoneOffset() * 60000);
+            if (!todo.plannedTime) return false;
+            const [y, m, d] = todo.plannedTime.split('-').map(Number);
+            const plannedDate = new Date(y, m - 1, d);
+            const plannedDateStr = `${plannedDate.getFullYear()}-${String(plannedDate.getMonth() + 1).padStart(2, '0')}-${String(plannedDate.getDate()).padStart(2, '0')}`;
+            console.log(`[调试] 任务:${todo.content}, plannedDate(本地):`, plannedDateStr);
             return !todo.completed &&
-                   plannedDate >= yesterday &&
-                   plannedDate < today;
+                   plannedDate.getTime() === yesterday.getTime();
         });
-
-        console.log('昨日未完成任务:', yesterdayTasks); // 调试日志
-
+        if (yesterdayTasks.length === 0) {
+            console.info('昨日没有未完成的任务。');
+        } else {
+            console.warn(`昨日有${yesterdayTasks.length}个未完成任务：`, yesterdayTasks.map(t => t.content));
+        }
         if (yesterdayTasks.length === 0) return;
-
-        // 检查是否有记住的选择
         const autoTransfer = localStorage.getItem('autoTransfer');
         if (autoTransfer === 'true') {
-            // 自动转移任务
-            const todayStr = today.toISOString().split('T')[0];
             yesterdayTasks.forEach(task => {
                 task.plannedTime = todayStr;
             });
             this.saveTodos();
-            // 强制刷新显示
             this.setFilter(this.currentFilter);
         } else if (autoTransfer !== 'false') {
-            // 显示弹窗询问用户
-            this.showTransferModal(yesterdayTasks, today.toISOString().split('T')[0]);
+            this.showTransferModal(yesterdayTasks, todayStr);
         }
     }
 
@@ -417,14 +422,14 @@ class TodoApp {
             `效率真高！已完成${count}项工作！`
         ];
         const text = messages[Math.floor(Math.random() * messages.length)];
-        
         const el = document.getElementById('encouragement');
         const textEl = document.getElementById('encouragement-text');
         textEl.textContent = text;
         el.classList.remove('hidden');
-
-        // 触发撒花特效
-        // this.createConfetti();
+        if (this._encourageTimer) clearTimeout(this._encourageTimer);
+        this._encourageTimer = setTimeout(() => {
+            el.classList.add('hidden');
+        }, 2000);
     }
 
     createConfetti() {
@@ -499,3 +504,50 @@ class TodoApp {
 document.addEventListener('DOMContentLoaded', () => {
     new TodoApp();
 });
+
+// ====== 调试面板功能 ======
+(function() {
+    const debugPanel = document.getElementById('debug-panel');
+    const debugMessages = document.getElementById('debug-messages');
+    const toggleBtn = document.getElementById('toggle-debug');
+    const clearBtn = document.getElementById('clear-debug');
+    let debugLog = [];
+    const MAX_LOG = 200;
+    let panelVisible = false;
+
+    function renderDebug() {
+        debugMessages.innerHTML = debugLog.map(item => `<div>${item}</div>`).join('');
+        debugMessages.scrollTop = debugMessages.scrollHeight;
+    }
+
+    function addDebug(msg) {
+        debugLog.push(msg);
+        if (debugLog.length > MAX_LOG) debugLog = debugLog.slice(-MAX_LOG);
+        renderDebug();
+    }
+
+    toggleBtn.addEventListener('click', () => {
+        panelVisible = !panelVisible;
+        debugPanel.classList.toggle('hidden', !panelVisible);
+        toggleBtn.textContent = panelVisible ? '隐藏调试面板' : '显示调试面板';
+    });
+    clearBtn.addEventListener('click', () => {
+        debugLog = [];
+        renderDebug();
+    });
+
+    // 重写console方法
+    ['log','info','warn','error'].forEach(type => {
+        const raw = console[type];
+        console[type] = function(...args) {
+            raw.apply(console, args);
+            const msg = args.map(a => {
+                if (typeof a === 'object') {
+                    try { return JSON.stringify(a); } catch { return '[object]'; }
+                }
+                return String(a);
+            }).join(' ');
+            addDebug(`<span style="color:${type==='error'?'#ff5252':type==='warn'?'#ffd600':'#fff'}">[${type}]</span> ${msg}`);
+        };
+    });
+})();
