@@ -71,10 +71,27 @@ h1, h2 {
     font-size: 16px;
 }
 
+.filter-section {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    margin-bottom: 20px;
+    align-items: center;
+}
+
 .filter-buttons {
     display: flex;
     gap: 5px;
-    margin-bottom: 20px;
+    flex: 1 1 auto;
+    min-width: 200px;
+}
+
+
+.default-view-selector select {
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    flex: 1;
 }
 
 .filter-btn {
@@ -301,12 +318,22 @@ li .delete-btn {
         flex-direction: column;
     }
     
+    .filter-section {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
     .filter-buttons {
+        width: 100%;
         flex-wrap: nowrap;
     }
     
     .filter-btn {
         width: 25%;
+    }
+
+    .default-view-selector {
+        width: 100%;
     }
 
     .debug-panel {
@@ -333,4 +360,113 @@ li .delete-btn {
         font-size: 14px;
         padding: 10px 16px;
     }
+}
+
+/* 设置面板样式 */
+.settings-toggle-btn {
+position: fixed;
+right: 10px;
+bottom: 10px;
+z-index: 210;
+background: var(--primary-color);
+color: #fff;
+border: none;
+border-radius: 5px;
+padding: 8px 16px;
+cursor: pointer;
+font-size: 14px;
+box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.settings-panel {
+position: fixed;
+left: 50%;
+top: 50%;
+transform: translate(-50%, -50%);
+width: 90%;
+max-width: 400px;
+background: white;
+border-radius: 10px;
+box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+z-index: 300;
+padding: 15px;
+}
+
+.settings-panel.hidden {
+display: none;
+}
+
+.settings-panel-header {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 15px;
+padding-bottom: 10px;
+border-bottom: 1px solid var(--border-color);
+}
+
+.settings-panel-header span {
+font-size: 18px;
+font-weight: bold;
+color: var(--primary-color);
+}
+
+.settings-panel-btn {
+background: var(--danger-color);
+color: white;
+border: none;
+border-radius: 5px;
+padding: 5px 10px;
+cursor: pointer;
+}
+
+.settings-content {
+max-height: 60vh;
+overflow-y: auto;
+}
+
+.setting-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--light-gray);
+    flex-wrap: wrap;
+}
+
+.setting-item:last-child {
+margin-bottom: 0;
+padding-bottom: 0;
+border-bottom: none;
+}
+
+.setting-item label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    margin-right: 10px;
+}
+
+.setting-item select {
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    width: 150px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+.settings-panel {
+    width: 95%;
+}
+
+.settings-toggle-btn {
+    right: 5px;
+    bottom: 5px;
+    padding: 6px 12px;
+    font-size: 13px;
+}
 }

@@ -38,6 +38,19 @@ class TodoApp {
         this.pendingList = document.getElementById('pending-list');
         this.completedList = document.getElementById('completed-list');
         this.filterButtons = document.querySelectorAll('.filter-btn');
+        this.settingsBtn = document.getElementById('toggle-settings');
+        this.settingsPanel = document.getElementById('settings-panel');
+        this.autoTransferCheckbox = document.getElementById('auto-transfer');
+        this.rememberChoiceCheckbox = document.getElementById('remember-choice'); // 设置面板的复选框
+        this.transferRememberCheckbox = document.getElementById('transfer-remember-choice'); // 迁移面板的复选框
+        this.defaultViewSelect = document.getElementById('default-view');
+        this.debugModeCheckbox = document.getElementById('debug-mode');
+        this.saveSettingsBtn = document.getElementById('save-settings');
+        
+        // 初始化调试按钮状态
+        const isDebugMode = localStorage.getItem('debugMode') === 'true';
+        document.getElementById('toggle-debug').textContent =
+            isDebugMode ? '隐藏调试面板' : '显示调试面板';
     }
 
     /**
@@ -86,11 +99,43 @@ class TodoApp {
         });
 
         // 为每个筛选按钮添加点击事件监听器
-        // 当按钮被点击时，调用setFilter方法并传入按钮的data-filter属性值
-        // 支持的筛选类型包括: today(今日)、week(本周)、month(本月)
         this.filterButtons.forEach(btn => {
             btn.addEventListener('click', () => this.setFilter(btn.dataset.filter));
         });
+
+        // 设置按钮事件
+        this.settingsBtn.addEventListener('click', () => {
+            this.settingsPanel.classList.toggle('hidden');
+            this.loadSettings();
+        });
+
+        // 关闭按钮事件(现在同时保存设置)
+        document.getElementById('close-settings').addEventListener('click', () => {
+            this.saveSettings();
+            this.settingsPanel.classList.add('hidden');
+        });
+
+        // 为两个"记住选择"复选框添加同步事件
+        const syncRememberChoice = (e) => {
+            const isChecked = e.target.checked;
+            localStorage.setItem('rememberChoice', isChecked ? 'true' : 'false');
+            // 同步两个面板的checkbox状态
+            if (this.rememberChoiceCheckbox) {
+                this.rememberChoiceCheckbox.checked = isChecked;
+            }
+            if (this.transferRememberCheckbox) {
+                this.transferRememberCheckbox.checked = isChecked;
+            }
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 记住选择状态更新为: ${isChecked}`);
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 设置面板状态: ${this.rememberChoiceCheckbox?.checked}, 迁移面板状态: ${this.transferRememberCheckbox?.checked}`);
+        };
+
+        if (this.rememberChoiceCheckbox) {
+            this.rememberChoiceCheckbox.addEventListener('change', syncRememberChoice);
+        }
+        if (this.transferRememberCheckbox) {
+            this.transferRememberCheckbox.addEventListener('change', syncRememberChoice);
+        }
     }
 
     /**
@@ -176,12 +221,22 @@ class TodoApp {
      * 4. 重新渲染任务列表
      */
     setFilter(filter) {
-        this.currentFilter = filter;
-        localStorage.setItem('currentFilter', filter);
-        console.info(`[调试] 当前过滤条件已记住: ${filter}`);
+        // 处理"打开上次退出视图"选项
+        const actualFilter = filter === 'last' ?
+            localStorage.getItem('lastUsedFilter') || 'today' :
+            filter;
+            
+        this.currentFilter = actualFilter;
+        localStorage.setItem('currentFilter', filter); // 保存原始选择
+        localStorage.setItem('lastUsedFilter', actualFilter); // 保存实际使用的过滤器
+        
+        console.info(`[调试] 当前过滤条件已记住: ${filter} (实际使用: ${actualFilter})`);
+        
+        // 更新按钮高亮状态
         this.filterButtons.forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.filter === filter);
+            btn.classList.toggle('active', btn.dataset.filter === actualFilter);
         });
+        
         this.renderTodos();
     }
 
@@ -384,6 +439,8 @@ class TodoApp {
         this.todos = savedTodos ? JSON.parse(savedTodos) : [];
         // 检查是否需要转移昨日任务
         this.checkYesterdayTasks();
+        // 加载设置
+        this.loadSettings();
     }
 
     /**
@@ -393,9 +450,15 @@ class TodoApp {
      */
     checkYesterdayTasks() {
         console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 开始检查昨日未完成任务`);
+        const rememberChoice = localStorage.getItem('rememberChoice');
+        
+        // 统一处理自动转移设置，优先使用UI状态，其次使用存储值
         const autoTransfer = localStorage.getItem('autoTransfer');
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移设置: ${autoTransfer || '未设置'}`);
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 是否记住选择: ${localStorage.getItem('rememberTransferChoice') || '未设置'}`);
+        
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 设置加载完成 - 记住选择: ${rememberChoice}, 自动转移: ${autoTransfer}`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移设置: ${autoTransfer}`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 是否记住选择: ${rememberChoice}`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 设置面板状态: ${this.rememberChoiceCheckbox?.checked}, 迁移面板状态: ${document.getElementById('remember-choice')?.checked}`);
         
         const today = new Date();
         const yesterday = new Date(today);
@@ -412,7 +475,30 @@ class TodoApp {
 
         console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 检测到 ${yesterdayTasks.length} 个昨日未完成任务`);
         if (yesterdayTasks.length === 0) return;
-        if (autoTransfer === 'true') {
+        
+        // 如果记住选择，完全依赖设置面板中的autoTransfer设置
+        if (rememberChoice && rememberChoice === 'true') {
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 已记住选择，直接应用设置`);
+            if (autoTransfer === 'true') {
+                const todayStr = today.toISOString().split('T')[0];
+                console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移 ${yesterdayTasks.length} 个任务到今日`);
+                yesterdayTasks.forEach(task => {
+                    task.plannedTime = todayStr;
+                });
+                this.saveTodos();
+                this.renderTodos();
+            }
+            return;
+        }
+
+        // 如果没有记住选择，显示转移确认对话框
+        const todayStr = today.toISOString().split('T')[0];
+        this.showTransferModal(yesterdayTasks, todayStr);
+        
+        // 使用之前已经声明的today/yesterday/yesterdayTasks变量
+        if (yesterdayTasks.length === 0) return;
+        
+        if (rememberChoice && autoTransfer === 'true') {
             const todayStr = today.toISOString().split('T')[0];
             console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移 ${yesterdayTasks.length} 个任务到今日`);
             yesterdayTasks.forEach(task => {
@@ -420,8 +506,7 @@ class TodoApp {
             });
             this.saveTodos();
             this.renderTodos();
-            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 任务转移完成`);
-        } else if (autoTransfer !== 'false') {
+        } else {
             const todayStr = today.toISOString().split('T')[0];
             this.showTransferModal(yesterdayTasks, todayStr);
         }
@@ -567,14 +652,24 @@ class TodoApp {
      * - 避免UTC时区导致的日期偏差
      */
     showTransferModal(tasks, todayDate) {
+        // 如果已经记住选择，不应该显示modal
+        if (localStorage.getItem('rememberChoice') === 'true') {
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 已记住选择，跳过modal显示`);
+            return;
+        }
+
         // 获取对话框相关DOM元素
         const modal = document.getElementById('transfer-modal');       // 对话框容器
         const yesBtn = document.getElementById('transfer-yes');        // 确认按钮
         const noBtn = document.getElementById('transfer-no');         // 取消按钮
         const rememberCheck = document.getElementById('remember-choice'); // "记住选择"复选框
 
+        // 同步设置面板中的checkbox状态
+        rememberCheck.checked = localStorage.getItem('rememberChoice') === 'true';
+        
         // 显示对话框(flex布局居中显示)
         modal.style.display = 'flex';
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 显示转移确认对话框（未记住选择）`);
 
         // "是"按钮点击事件 - 确认转移任务
         yesBtn.onclick = () => {
@@ -592,9 +687,13 @@ class TodoApp {
             // 保存修改后的任务列表
             this.saveTodos();
 
-            // 如果用户勾选了"记住选择"，则保存自动转移设置
+            // 更新设置面板中的"转移昨日任务到今天"复选框
+            this.autoTransferCheckbox.checked = true;
+            localStorage.setItem('autoTransfer', 'true');
+
+            // 如果用户勾选了"记住选择"，则保存设置
             if (rememberCheck.checked) {
-                localStorage.setItem('autoTransfer', 'true');
+                localStorage.setItem('rememberChoice', 'true');
             }
 
             // 关闭对话框
@@ -609,14 +708,82 @@ class TodoApp {
 
         // "否"按钮点击事件 - 取消转移
         noBtn.onclick = () => {
-            // 如果用户勾选了"记住选择"，则保存不自动转移的设置
+            // 更新设置面板中的"转移昨日任务到今天"复选框
+            this.autoTransferCheckbox.checked = false;
+            localStorage.setItem('autoTransfer', 'false');
+
+            // 如果用户勾选了"记住选择"，则保存设置
             if (rememberCheck.checked) {
-                localStorage.setItem('autoTransfer', 'false');
+                localStorage.setItem('rememberChoice', 'true');
             }
             
             // 关闭对话框
             modal.style.display = 'none';
         };
+    }
+
+    /**
+     * 加载设置
+     */
+    loadSettings() {
+        // 确保从localStorage获取最新设置
+        const autoTransfer = localStorage.getItem('autoTransfer');
+        const rememberChoice = localStorage.getItem('rememberChoice');
+        const defaultView = localStorage.getItem('currentFilter') || 'today';
+        const debugMode = localStorage.getItem('debugMode');
+        const lastUsedFilter = localStorage.getItem('lastUsedFilter') || 'today';
+
+        console.log('[DEBUG] 加载设置:', {
+            autoTransfer,
+            rememberChoice,
+            defaultView,
+            debugMode
+        });
+
+        // 初始化变量
+        const rememberChecked = rememberChoice === 'true';
+        const transferRememberCheck = document.getElementById('remember-choice');
+
+        // 同步所有相关UI元素状态
+        if (this.rememberChoiceCheckbox) {
+            this.rememberChoiceCheckbox.checked = rememberChecked;
+            console.log('[DEBUG] 设置面板记住选择状态:', rememberChecked);
+        }
+
+        if (transferRememberCheck) {
+            transferRememberCheck.checked = rememberChecked;
+            console.log('[DEBUG] 迁移面板记住选择状态:', rememberChecked);
+        }
+
+        if (this.autoTransferCheckbox) {
+            this.autoTransferCheckbox.checked = autoTransfer === 'true';
+            console.log('[DEBUG] 自动迁移状态:', autoTransfer === 'true');
+        }
+
+    }
+
+    /**
+     * 保存设置
+     */
+    saveSettings() {
+        localStorage.setItem('autoTransfer', String(this.autoTransferCheckbox.checked));
+        localStorage.setItem('rememberChoice', String(this.rememberChoiceCheckbox.checked));
+        localStorage.setItem('currentFilter', this.defaultViewSelect.value);
+        localStorage.setItem('debugMode', String(this.debugModeCheckbox.checked));
+        
+        // 应用新设置
+        this.currentFilter = this.defaultViewSelect.value;
+        this.renderTodos();
+        
+        // 控制调试面板
+        const isDebugMode = this.debugModeCheckbox.checked;
+        document.getElementById('debug-panel').classList.toggle('hidden', !isDebugMode);
+        
+        // 同步主界面调试按钮状态
+        const toggleBtn = document.getElementById('toggle-debug');
+        if (toggleBtn) {
+            toggleBtn.textContent = isDebugMode ? '隐藏调试面板' : '显示调试面板';
+        }
     }
 }
 
@@ -646,10 +813,35 @@ document.addEventListener('DOMContentLoaded', () => {
         renderDebug();
     }
 
+    // 同步调试状态到设置面板
+    function syncDebugState(isVisible) {
+        const debugCheckbox = document.getElementById('debug-mode');
+        if (debugCheckbox) {
+            debugCheckbox.checked = isVisible;
+            localStorage.setItem('debugMode', String(isVisible));
+        }
+    }
+
     toggleBtn.addEventListener('click', () => {
-        panelVisible = !panelVisible;
-        debugPanel.classList.toggle('hidden', !panelVisible);
-        toggleBtn.textContent = panelVisible ? '隐藏调试面板' : '显示调试面板';
+        // 根据按钮当前文字决定操作
+        const shouldShow = toggleBtn.textContent === '显示调试面板';
+        
+        // 设置面板可见状态
+        panelVisible = shouldShow;
+        debugPanel.classList.toggle('hidden', !shouldShow);
+        
+        // 更新按钮文本
+        toggleBtn.textContent = shouldShow ? '隐藏调试面板' : '显示调试面板';
+        
+        // 同步所有相关状态
+        syncDebugState(shouldShow);
+        const debugCheckbox = document.getElementById('debug-mode');
+        if (debugCheckbox) {
+            debugCheckbox.checked = shouldShow;
+            localStorage.setItem('debugMode', String(shouldShow));
+        }
+        
+        console.log(`[DEBUG] 调试面板状态更新: ${shouldShow ? '显示' : '隐藏'}`);
     });
     clearBtn.addEventListener('click', () => {
         debugLog = [];

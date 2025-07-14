@@ -9,11 +9,13 @@
 </head>
 <body>
     <div class="container">
-        <div class="filter-buttons">
-            <button class="filter-btn active" data-filter="today">今天</button>
-            <button class="filter-btn" data-filter="week">本周</button>
-            <button class="filter-btn" data-filter="month">本月</button>
-            <button class="filter-btn" data-filter="all">全部</button>
+        <div class="filter-section">
+            <div class="filter-buttons">
+                <button class="filter-btn active" data-filter="today">今天</button>
+                <button class="filter-btn" data-filter="week">本周</button>
+                <button class="filter-btn" data-filter="month">本月</button>
+                <button class="filter-btn" data-filter="all">全部</button>
+            </div>
         </div>
 
         <div class="input-section">
@@ -42,7 +44,7 @@
                 <button id="transfer-yes">是</button>
                 <button id="transfer-no">否</button>
                 <label>
-                    <input type="checkbox" id="remember-choice"> 记住我的选择
+                    <input type="checkbox" id="transfer-remember-choice"> 记住我的选择
                 </label>
             </div>
         </div>
@@ -56,6 +58,44 @@
         <div id="debug-messages" class="debug-messages"></div>
     </div>
     <button id="toggle-debug" class="debug-toggle-btn">显示调试面板</button>
+    <button id="toggle-settings" class="settings-toggle-btn">设置</button>
+    
+    <div id="settings-panel" class="settings-panel hidden">
+        <div class="settings-panel-header">
+            <span>设置</span>
+            <button id="close-settings" class="settings-panel-btn">保存并关闭</button>
+        </div>
+        <div class="settings-content">
+            <div class="setting-item">
+                <label>
+                    <input type="checkbox" id="auto-transfer" checked>
+                    转移昨日未完成任务到今天
+                </label>
+            </div>
+            <div class="setting-item">
+                <label>
+                    <input type="checkbox" id="remember-choice">
+                    不展示转移提醒
+                </label>
+            </div>
+            <div class="setting-item">
+                <label>默认视图:</label>
+                <select id="default-view">
+                    <option value="today">今天</option>
+                    <option value="week">本周</option>
+                    <option value="month">本月</option>
+                    <option value="all">全部</option>
+                    <option value="last">打开上次退出视图</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <label>
+                    <input type="checkbox" id="debug-mode">
+                    调试模式
+                </label>
+            </div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
     <div id="encouragement" class="hidden">
