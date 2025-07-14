@@ -376,9 +376,7 @@ class TodoApp {
     /**
      * 从localStorage加载任务列表
      * 执行以下检查:
-     * 1. 周重置检查(每周一)
-     * 2. 月重置检查(每月1号)
-     * 3. 昨日任务转移检查
+     * 昨日任务转移检查
      * 如果没有存储数据则初始化空数组
      */
     loadTodos() {
@@ -390,61 +388,40 @@ class TodoApp {
 
     /**
      * 检查昨日未完成任务并处理转移
-     * 主要功能:
-     * 1. 找出所有计划日期为昨日且未完成的任务
-     * 2. 根据用户设置(autoTransfer)处理这些任务:
-     *    - 如果autoTransfer为true: 自动将任务转移到今天
-     *    - 如果autoTransfer为false: 不做任何操作
-     *    - 其他情况: 显示确认对话框让用户选择
-     *
-     * 处理流程:
-     * 1. 计算昨日日期(本地时区)
-     * 2. 过滤出计划日期为昨日且未完成的任务
-     * 3. 检查localStorage中的autoTransfer设置
-     * 4. 根据设置执行自动转移或显示对话框
-     *
-     * 注意事项:
-     * - 所有日期比较都使用本地时区
-     * - 任务转移后会立即保存到localStorage
-     * - 转移后会重新渲染任务列表
+     * 1. 检测昨日未完成任务
+     * 2. 根据用户设置自动转移或显示确认对话框
      */
     checkYesterdayTasks() {
-        // 获取今日和昨日日期对象(本地时区)
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 开始检查昨日未完成任务`);
+        const autoTransfer = localStorage.getItem('autoTransfer');
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移设置: ${autoTransfer || '未设置'}`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 是否记住选择: ${localStorage.getItem('rememberTransferChoice') || '未设置'}`);
+        
         const today = new Date();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         
-        // 过滤出昨日未完成的任务
         const yesterdayTasks = this.todos.filter(todo => {
-            // 跳过没有计划日期或已完成的任务
             if (!todo.plannedTime || todo.completed) return false;
-            
-            // 解析任务计划日期为Date对象
             const [y, m, d] = todo.plannedTime.split('-').map(Number);
             const plannedDate = new Date(y, m - 1, d);
-            
-            // 比较日期组件(日/月/年)判断是否为昨日
             return plannedDate.getDate() === yesterday.getDate() &&
                    plannedDate.getMonth() === yesterday.getMonth() &&
                    plannedDate.getFullYear() === yesterday.getFullYear();
         });
 
-        // 如果没有昨日未完成任务则直接返回
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 检测到 ${yesterdayTasks.length} 个昨日未完成任务`);
         if (yesterdayTasks.length === 0) return;
-        
-        // 获取用户设置的自动转移偏好
-        const autoTransfer = localStorage.getItem('autoTransfer');
-        
         if (autoTransfer === 'true') {
-            // 自动转移模式: 将所有昨日任务转移到今天
-            const todayStr = today.toISOString().split('T')[0]; // 格式化为YYYY-MM-DD
+            const todayStr = today.toISOString().split('T')[0];
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移 ${yesterdayTasks.length} 个任务到今日`);
             yesterdayTasks.forEach(task => {
-                task.plannedTime = todayStr; // 更新计划日期为今天
+                task.plannedTime = todayStr;
             });
-            this.saveTodos(); // 保存修改
-            this.renderTodos(); // 重新渲染列表
+            this.saveTodos();
+            this.renderTodos();
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 任务转移完成`);
         } else if (autoTransfer !== 'false') {
-            // 需要用户确认的模式: 显示转移确认对话框
             const todayStr = today.toISOString().split('T')[0];
             this.showTransferModal(yesterdayTasks, todayStr);
         }
