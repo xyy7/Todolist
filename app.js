@@ -9,7 +9,19 @@
 class TodoApp {
     constructor() {
         this.todos = [];
-        this.currentFilter = localStorage.getItem('currentFilter') || 'today';
+        // 处理视图初始化逻辑
+        const defaultView = localStorage.getItem('defaultView');
+        const currentFilter = localStorage.getItem('currentFilter');
+        const lastUsedFilter = localStorage.getItem('lastUsedFilter');
+        
+        // 特殊处理'last'默认视图
+        if (defaultView === 'last') {
+            this.currentFilter = lastUsedFilter || currentFilter || 'today';
+        } else {
+            // 普通情况：优先使用defaultView，没有则使用currentFilter，最后回退到'today'
+            this.currentFilter = defaultView || currentFilter || 'today';
+        }
+        console.log(`[Init] 初始化视图过滤器: defaultView=${defaultView}, currentFilter=${currentFilter}, lastUsed=${lastUsedFilter}, 最终使用=${this.currentFilter}`);
         this.initElements();
         this.loadTodos();
         this.setupEventListeners();
@@ -227,10 +239,18 @@ class TodoApp {
             filter;
             
         this.currentFilter = actualFilter;
-        localStorage.setItem('currentFilter', filter); // 保存原始选择
-        localStorage.setItem('lastUsedFilter', actualFilter); // 保存实际使用的过滤器
+        // 保存原始选择(currentFilter)和实际使用的过滤器(lastUsedFilter)
+        localStorage.setItem('currentFilter', filter);
+        // 只有当不是'last'时才更新lastUsedFilter
+        if (filter !== 'last') {
+            localStorage.setItem('lastUsedFilter', actualFilter);
+        }
         
-        console.info(`[调试] 当前过滤条件已记住: ${filter} (实际使用: ${actualFilter})`);
+        console.info(`[DEBUG] 过滤器更新:
+           选择: ${filter}
+           实际使用: ${actualFilter}
+           默认视图: ${localStorage.getItem('defaultView')}
+           当前过滤器: ${this.currentFilter}`);
         
         // 更新按钮高亮状态
         this.filterButtons.forEach(btn => {
@@ -313,10 +333,12 @@ class TodoApp {
     
             // 获取筛选后的任务并按状态分类
             const filteredTodos = this.filterTodos();
+            console.log(`[DEBUG] 过滤后的任务:`, filteredTodos);
             const pendingTodos = filteredTodos.filter(t => !t.completed)
                 .sort((a, b) => new Date(a.plannedTime) - new Date(b.plannedTime));
             const completedTodos = filteredTodos.filter(t => t.completed)
                 .sort((a, b) => new Date(b.completedTime) - new Date(a.completedTime));
+            console.log(`[DEBUG] 待办任务数: ${pendingTodos.length}, 已完成任务数: ${completedTodos.length}`);
     
             // 仅在本月筛选时显示月份标题，且只插入一行
             // 先检查并移除已存在的月份标题(避免重复添加)
@@ -460,9 +482,12 @@ class TodoApp {
         console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 是否记住选择: ${rememberChoice}`);
         console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 设置面板状态: ${this.rememberChoiceCheckbox?.checked}, 迁移面板状态: ${document.getElementById('remember-choice')?.checked}`);
         
-        const today = new Date();
+        // 使用本地时区计算今天和昨天
+        const now = new Date();
+        const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
+        console.log(`[DEBUG] 日期计算 - 今天(本地): ${today.toISOString()}, 昨天(本地): ${yesterday.toISOString()}`);
         
         const yesterdayTasks = this.todos.filter(todo => {
             if (!todo.plannedTime || todo.completed) return false;
@@ -480,13 +505,20 @@ class TodoApp {
         if (rememberChoice && rememberChoice === 'true') {
             console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 已记住选择，直接应用设置`);
             if (autoTransfer === 'true') {
-                const todayStr = today.toISOString().split('T')[0];
+                // 使用本地时区计算今日日期
+                const now = new Date();
+                const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
                 console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移 ${yesterdayTasks.length} 个任务到今日`);
+                console.log(`[DEBUG] 今日日期(本地): ${todayStr}, 当前时间: ${now.toISOString()}`);
                 yesterdayTasks.forEach(task => {
+                    console.log(`[DEBUG] 转移任务: ${task.content} (原日期: ${task.plannedTime})`);
                     task.plannedTime = todayStr;
+                    console.log(`[DEBUG] 新日期: ${task.plannedTime}, 本地时区验证: ${new Date(task.plannedTime).toLocaleDateString('zh-CN')}`);
                 });
                 this.saveTodos();
+                console.log(`[DEBUG] 保存后的任务列表:`, this.todos);
                 this.renderTodos();
+                console.log(`[DEBUG] 当前过滤器: ${this.currentFilter}, 渲染任务数: ${this.filterTodos().length}`);
             }
             return;
         }
@@ -729,7 +761,8 @@ class TodoApp {
         // 确保从localStorage获取最新设置
         const autoTransfer = localStorage.getItem('autoTransfer');
         const rememberChoice = localStorage.getItem('rememberChoice');
-        const defaultView = localStorage.getItem('currentFilter') || 'today';
+        const defaultView = localStorage.getItem('defaultView');
+        const currentFilter = localStorage.getItem('currentFilter');
         const debugMode = localStorage.getItem('debugMode');
         const lastUsedFilter = localStorage.getItem('lastUsedFilter') || 'today';
 
@@ -737,7 +770,9 @@ class TodoApp {
             autoTransfer,
             rememberChoice,
             defaultView,
-            debugMode
+            currentFilter,
+            debugMode,
+            lastUsedFilter
         });
 
         // 初始化变量
@@ -760,6 +795,11 @@ class TodoApp {
             console.log('[DEBUG] 自动迁移状态:', autoTransfer === 'true');
         }
 
+        if (this.defaultViewSelect) {
+            this.defaultViewSelect.value = defaultView || 'today';
+            console.log('[DEBUG] 默认视图设置:', defaultView);
+        }
+
     }
 
     /**
@@ -771,9 +811,14 @@ class TodoApp {
         localStorage.setItem('currentFilter', this.defaultViewSelect.value);
         localStorage.setItem('debugMode', String(this.debugModeCheckbox.checked));
         
-        // 应用新设置
-        this.currentFilter = this.defaultViewSelect.value;
-        this.renderTodos();
+        // 保存默认视图设置(不修改当前过滤器)
+        const newDefaultView = this.defaultViewSelect.value;
+        localStorage.setItem('defaultView', newDefaultView);
+        
+        // 保存当前过滤器(保持原有行为)
+        localStorage.setItem('currentFilter', this.currentFilter);
+        
+        console.log(`[Settings] 默认视图已保存为: ${newDefaultView} (下次启动生效), 当前过滤器保持为: ${this.currentFilter}`);
         
         // 控制调试面板
         const isDebugMode = this.debugModeCheckbox.checked;
