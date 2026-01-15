@@ -213,14 +213,22 @@ class TodoApp {
      * 删除指定任务
      * @param {string} id - 要删除的任务ID
      * 流程:
-     * 1. 过滤掉指定ID的任务
-     * 2. 保存到本地存储
-     * 3. 重新渲染列表
+     * 1. 保存当前滚动位置
+     * 2. 过滤掉指定ID的任务
+     * 3. 保存到本地存储
+     * 4. 重新渲染列表
+     * 5. 恢复滚动位置
      */
     deleteTodo(id) {
+        // 保存当前滚动位置
+        const scrollY = window.scrollY;
         this.todos = this.todos.filter(t => t.id !== id);
         this.saveTodos();
         this.renderTodos();
+        // 在下一帧恢复滚动位置
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
     }
 
     /**
@@ -411,8 +419,12 @@ class TodoApp {
             // 添加删除按钮
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'delete-btn';
+            deleteBtn.type = 'button';
             deleteBtn.innerHTML = '×';
-            deleteBtn.addEventListener('click', () => this.deleteTodo(todo.id));
+            deleteBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.deleteTodo(todo.id);
+            });
             li.appendChild(deleteBtn);
     
             // 将任务项添加到指定列表
