@@ -138,8 +138,8 @@ class TodoApp {
             if (this.transferRememberCheckbox) {
                 this.transferRememberCheckbox.checked = isChecked;
             }
-            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 记住选择状态更新为: ${isChecked}`);
-            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 设置面板状态: ${this.rememberChoiceCheckbox?.checked}, 迁移面板状态: ${this.transferRememberCheckbox?.checked}`);
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 记住选择状态更新为: ${isChecked}`);
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 设置面板状态: ${this.rememberChoiceCheckbox?.checked}, 迁移面板状态: ${this.transferRememberCheckbox?.checked}`);
         };
 
         if (this.rememberChoiceCheckbox) {
@@ -356,7 +356,8 @@ class TodoApp {
             }
     
             // 渲染待办和已完成任务
-            pendingTodos.forEach(todo => this.renderTodo(todo, this.pendingList));
+            // pendingTodos.forEach(todo => this.renderTodo(todo, this.pendingList));
+            pendingTodos.reverse().forEach(todo => this.renderTodo(todo, this.pendingList));
             completedTodos.forEach(todo => this.renderTodo(todo, this.completedList));
         }
     
@@ -379,10 +380,15 @@ class TodoApp {
             checkbox.checked = todo.completed;
             checkbox.addEventListener('change', () => this.toggleTodo(todo.id));
             
-            // 创建任务内容显示区域
+            // 创建任务内容显示区域（可编辑）
             const content = document.createElement('span');
             content.className = 'todo-content' + (todo.completed ? ' completed' : '');
             content.textContent = todo.content;
+            content.contentEditable = true; // 允许直接编辑
+            content.addEventListener('blur', () => {
+                todo.content = content.textContent.trim();
+                this.saveTodos();
+            });
             
             li.appendChild(checkbox);
             li.appendChild(content);
@@ -466,51 +472,53 @@ class TodoApp {
     }
 
     /**
-     * 检查昨日未完成任务并处理转移
-     * 1. 检测昨日未完成任务
+     * 检查并处理所有过去未完成任务
+     * 1. 检测所有未完成且计划时间为过去时间的任务
      * 2. 根据用户设置自动转移或显示确认对话框
      */
     checkYesterdayTasks() {
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 开始检查昨日未完成任务`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 开始检查所有过去未完成任务`);
         const rememberChoice = localStorage.getItem('rememberChoice');
         
         // 统一处理自动转移设置，优先使用UI状态，其次使用存储值
         const autoTransfer = localStorage.getItem('autoTransfer');
         
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 设置加载完成 - 记住选择: ${rememberChoice}, 自动转移: ${autoTransfer}`);
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移设置: ${autoTransfer}`);
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 是否记住选择: ${rememberChoice}`);
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 设置面板状态: ${this.rememberChoiceCheckbox?.checked}, 迁移面板状态: ${document.getElementById('remember-choice')?.checked}`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 设置加载完成 - 记住选择: ${rememberChoice}, 自动转移: ${autoTransfer}`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 自动转移设置: ${autoTransfer}`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 是否记住选择: ${rememberChoice}`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 设置面板状态: ${this.rememberChoiceCheckbox?.checked}, 迁移面板状态: ${document.getElementById('remember-choice')?.checked}`);
         
-        // 使用本地时区计算今天和昨天
+        // 使用本地时区计算当前时间
         const now = new Date();
         const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        console.log(`[DEBUG] 日期计算 - 今天(本地): ${today.toISOString()}, 昨天(本地): ${yesterday.toISOString()}`);
+        console.log(`[DEBUG] 当前时间(本地): ${today.toISOString()}`);
         
-        const yesterdayTasks = this.todos.filter(todo => {
-            if (!todo.plannedTime || todo.completed) return false;
-            const [y, m, d] = todo.plannedTime.split('-').map(Number);
-            const plannedDate = new Date(y, m - 1, d);
-            return plannedDate.getDate() === yesterday.getDate() &&
-                   plannedDate.getMonth() === yesterday.getMonth() &&
-                   plannedDate.getFullYear() === yesterday.getFullYear();
+        // 获取所有未完成且计划日期为过去日期的任务
+        const unfinishedTasks = this.todos.filter(todo => {
+            if (!todo.completed && todo.plannedTime) {
+                // 获取计划日期的YYYY-MM-DD格式
+                const plannedDateStr = new Date(todo.plannedTime).toISOString().split('T')[0];
+                // 获取当前日期的YYYY-MM-DD格式
+                const todayStr = today.toISOString().split('T')[0];
+                // 比较日期字符串
+                return plannedDateStr < todayStr;
+            }
+            return false;
         });
 
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 检测到 ${yesterdayTasks.length} 个昨日未完成任务`);
-        if (yesterdayTasks.length === 0) return;
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 检测到 ${unfinishedTasks.length} 个未完成任务`);
+        if (unfinishedTasks.length === 0) return;
         
         // 如果记住选择，完全依赖设置面板中的autoTransfer设置
         if (rememberChoice && rememberChoice === 'true') {
-            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 已记住选择，直接应用设置`);
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 已记住选择，直接应用设置`);
             if (autoTransfer === 'true') {
                 // 使用本地时区计算今日日期
                 const now = new Date();
                 const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-                console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移 ${yesterdayTasks.length} 个任务到今日`);
+                console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 自动转移 ${unfinishedTasks.length} 个任务到今日`);
                 console.log(`[DEBUG] 今日日期(本地): ${todayStr}, 当前时间: ${now.toISOString()}`);
-                yesterdayTasks.forEach(task => {
+                unfinishedTasks.forEach(task => {
                     console.log(`[DEBUG] 转移任务: ${task.content} (原日期: ${task.plannedTime})`);
                     task.plannedTime = todayStr;
                     console.log(`[DEBUG] 新日期: ${task.plannedTime}, 本地时区验证: ${new Date(task.plannedTime).toLocaleDateString('zh-CN')}`);
@@ -524,24 +532,32 @@ class TodoApp {
         }
 
         // 如果没有记住选择，显示转移确认对话框
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 检测到 ${unfinishedTasks.length} 个过去未完成任务`);
+        if (unfinishedTasks.length === 0) return;
+        
         const todayStr = today.toISOString().split('T')[0];
-        this.showTransferModal(yesterdayTasks, todayStr);
         
-        // 使用之前已经声明的today/yesterday/yesterdayTasks变量
-        if (yesterdayTasks.length === 0) return;
-        
-        if (rememberChoice && autoTransfer === 'true') {
-            const todayStr = today.toISOString().split('T')[0];
-            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 自动转移 ${yesterdayTasks.length} 个任务到今日`);
-            yesterdayTasks.forEach(task => {
-                task.plannedTime = todayStr;
-            });
-            this.saveTodos();
-            this.renderTodos();
-        } else {
-            const todayStr = today.toISOString().split('T')[0];
-            this.showTransferModal(yesterdayTasks, todayStr);
+        // 如果记住选择，完全依赖设置面板中的autoTransfer设置
+        if (rememberChoice && rememberChoice === 'true') {
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 已记住选择，直接应用设置`);
+            if (autoTransfer === 'true') {
+                console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 自动转移 ${unfinishedTasks.length} 个任务到今日`);
+                console.log(`[DEBUG] 今日日期(本地): ${todayStr}, 当前时间: ${now.toISOString()}`);
+                unfinishedTasks.forEach(task => {
+                    console.log(`[DEBUG] 转移任务: ${task.content} (原日期: ${task.plannedTime})`);
+                    task.plannedTime = todayStr;
+                    console.log(`[DEBUG] 新日期: ${task.plannedTime}, 本地时区验证: ${new Date(task.plannedTime).toLocaleDateString('zh-CN')}`);
+                });
+                this.saveTodos();
+                console.log(`[DEBUG] 保存后的任务列表:`, this.todos);
+                this.renderTodos();
+                console.log(`[DEBUG] 当前过滤器: ${this.currentFilter}, 渲染任务数: ${this.filterTodos().length}`);
+            }
+            return;
         }
+        
+        // 如果没有记住选择，显示转移确认对话框
+        this.showTransferModal(unfinishedTasks, todayStr);
     }
 
     /**
@@ -686,7 +702,7 @@ class TodoApp {
     showTransferModal(tasks, todayDate) {
         // 如果已经记住选择，不应该显示modal
         if (localStorage.getItem('rememberChoice') === 'true') {
-            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 已记住选择，跳过modal显示`);
+            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 已记住选择，跳过modal显示`);
             return;
         }
 
@@ -701,7 +717,7 @@ class TodoApp {
         
         // 显示对话框(flex布局居中显示)
         modal.style.display = 'flex';
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN')}] 显示转移确认对话框（未记住选择）`);
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 显示转移确认对话框（${tasks.length}个未完成任务）`);
 
         // "是"按钮点击事件 - 确认转移任务
         yesBtn.onclick = () => {
