@@ -9,6 +9,7 @@
 class TodoApp {
     constructor() {
         this.todos = [];
+        this.searchQuery = '';
         // 处理视图初始化逻辑
         const defaultView = localStorage.getItem('defaultView');
         const currentFilter = localStorage.getItem('currentFilter');
@@ -42,6 +43,7 @@ class TodoApp {
      * - 添加按钮(add-btn)
      * - 待办/已完成列表容器
      * - 筛选按钮组
+     * - 搜索输入框(search-input)
      */
     initElements() {
         this.todoInput = document.getElementById('todo-input');
@@ -62,6 +64,10 @@ class TodoApp {
         // 导出控件
         this.exportFormatSelect = document.getElementById('export-format');
         this.exportExecuteBtn = document.getElementById('export-execute');
+        
+        // 搜索输入框
+        this.searchInput = document.getElementById('search-input');
+        this.searchClearBtn = document.getElementById('search-clear');
         
         // 初始化调试按钮状态
         const isDebugMode = localStorage.getItem('debugMode') === 'true';
@@ -156,6 +162,39 @@ class TodoApp {
         // 导出按钮事件监听
         if (this.exportExecuteBtn) {
             this.exportExecuteBtn.addEventListener('click', () => this.handleExport());
+        }
+
+        // 搜索输入框事件监听
+        if (this.searchInput) {
+            const updateSearch = () => {
+                this.searchQuery = this.searchInput.value.trim().toLowerCase();
+                this.updateClearButtonVisibility();
+                this.renderTodos();
+            };
+            this.searchInput.addEventListener('input', updateSearch);
+            // 初始更新
+            updateSearch();
+        }
+
+        // 清除按钮事件监听
+        if (this.searchClearBtn) {
+            this.searchClearBtn.addEventListener('click', () => {
+                this.searchInput.value = '';
+                this.searchQuery = '';
+                this.updateClearButtonVisibility();
+                this.renderTodos();
+                this.searchInput.focus();
+            });
+        }
+    }
+
+    /**
+     * 更新清除按钮的可见性
+     */
+    updateClearButtonVisibility() {
+        if (this.searchClearBtn) {
+            const hasText = this.searchInput.value.trim().length > 0;
+            this.searchClearBtn.classList.toggle('hidden', !hasText);
         }
     }
 
@@ -311,7 +350,8 @@ class TodoApp {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-        return this.todos.filter(todo => {
+        // 首先根据日期筛选
+        const dateFiltered = this.todos.filter(todo => {
             const plannedDate = new Date(todo.plannedTime);
             
             switch(this.currentFilter) {
@@ -331,6 +371,16 @@ class TodoApp {
                     return true;
             }
         });
+
+        // 然后根据搜索词筛选
+        if (this.searchQuery) {
+            const query = this.searchQuery.toLowerCase();
+            return dateFiltered.filter(todo =>
+                todo.content.toLowerCase().includes(query)
+            );
+        }
+        
+        return dateFiltered;
     }
 
         /**
