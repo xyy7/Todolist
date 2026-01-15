@@ -473,6 +473,39 @@ border-bottom: none;
     flex-shrink: 0;
 }
 
+.export-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    align-items: center;
+}
+
+.export-controls select {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-size: 14px;
+    background-color: white;
+}
+
+.export-btn {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 8px 16px;
+    cursor: pointer;
+    font-size: 14px;
+    text-align: center;
+    transition: background-color 0.2s;
+    white-space: nowrap;
+}
+
+.export-btn:hover {
+    background-color: #3367d6;
+}
+
 @media (max-width: 480px) {
 .settings-panel {
     width: 95%;

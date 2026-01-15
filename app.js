@@ -59,6 +59,10 @@ class TodoApp {
         this.debugModeCheckbox = document.getElementById('debug-mode');
         this.saveSettingsBtn = document.getElementById('save-settings');
         
+        // 导出控件
+        this.exportFormatSelect = document.getElementById('export-format');
+        this.exportExecuteBtn = document.getElementById('export-execute');
+        
         // 初始化调试按钮状态
         const isDebugMode = localStorage.getItem('debugMode') === 'true';
         document.getElementById('toggle-debug').textContent =
@@ -147,6 +151,11 @@ class TodoApp {
         }
         if (this.transferRememberCheckbox) {
             this.transferRememberCheckbox.addEventListener('change', syncRememberChoice);
+        }
+
+        // 导出按钮事件监听
+        if (this.exportExecuteBtn) {
+            this.exportExecuteBtn.addEventListener('click', () => this.handleExport());
         }
     }
 
@@ -856,6 +865,118 @@ class TodoApp {
         const toggleBtn = document.getElementById('toggle-debug');
         if (toggleBtn) {
             toggleBtn.textContent = isDebugMode ? '隐藏调试面板' : '显示调试面板';
+        }
+    }
+
+    /**
+     * 导出任务数据为JSON文件
+     * 生成包含所有任务数据的JSON文件并触发下载
+     */
+    exportToJSON() {
+        const data = JSON.stringify(this.todos, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `todo-export-${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        console.log(`[Export] 已导出 ${this.todos.length} 个任务为JSON文件`);
+    }
+
+    /**
+     * 导出任务数据为CSV文件
+     * 生成CSV格式的数据，包含表头：ID,内容,计划时间,完成状态,完成时间
+     */
+    exportToCSV() {
+        const headers = ['ID', '内容', '计划时间', '完成状态', '完成时间'];
+        const rows = this.todos.map(todo => [
+            todo.id,
+            `"${todo.content.replace(/"/g, '""')}"`, // 转义引号
+            todo.plannedTime,
+            todo.completed ? '是' : '否',
+            todo.completedTime || ''
+        ]);
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.join(','))
+        ].join('\n');
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `todo-export-${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        console.log(`[Export] 已导出 ${this.todos.length} 个任务为CSV文件`);
+    }
+
+    /**
+     * 复制任务数据到剪贴板
+     * 将任务摘要复制为文本格式，便于粘贴到其他应用
+     */
+    copyToClipboard() {
+        const summary = this.todos.map(todo => {
+            const status = todo.completed ? '✅' : '⬜';
+            const date = this.formatTime(todo.plannedTime);
+            const completed = todo.completed ? ` (完成于 ${this.formatTime(todo.completedTime)})` : '';
+            return `${status} ${todo.content} - ${date}${completed}`;
+        }).join('\n');
+        
+        navigator.clipboard.writeText(summary)
+            .then(() => {
+                console.log('[Export] 任务摘要已复制到剪贴板');
+                // 显示一个简短的反馈
+                const feedback = document.createElement('div');
+                feedback.textContent = '已复制到剪贴板！';
+                feedback.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: var(--secondary-color);
+                    color: white;
+                    padding: 10px 15px;
+                    border-radius: 5px;
+                    z-index: 1000;
+                    font-size: 14px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+                `;
+                document.body.appendChild(feedback);
+                setTimeout(() => feedback.remove(), 2000);
+            })
+            .catch(err => {
+                console.error('[Export] 复制到剪贴板失败:', err);
+                alert('复制失败，请手动复制控制台输出。');
+            });
+    }
+
+    /**
+     * 处理导出操作，根据选择的格式调用相应的导出方法
+     */
+    handleExport() {
+        if (!this.exportFormatSelect) {
+            console.error('[Export] 导出格式选择元素未找到');
+            return;
+        }
+        const format = this.exportFormatSelect.value;
+        switch (format) {
+            case 'json':
+                this.exportToJSON();
+                break;
+            case 'csv':
+                this.exportToCSV();
+                break;
+            case 'clipboard':
+                this.copyToClipboard();
+                break;
+            default:
+                console.warn(`[Export] 未知的导出格式: ${format}`);
+                alert('请选择有效的导出格式');
         }
     }
 }
