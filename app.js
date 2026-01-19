@@ -201,6 +201,8 @@ class TodoApp {
     toggleTodo(id) {
         const todo = this.todos.find(t => t.id === id);
         if (!todo) return;
+        // 保存当前滚动位置
+        const scrollY = window.scrollY;
         todo.completed = !todo.completed;
         todo.completedTime = todo.completed ? new Date().toISOString() : null;
         this.saveTodos();
@@ -216,6 +218,10 @@ class TodoApp {
             this.showEncouragement(todayTasks.length);
         }
         this.renderTodos();
+        // 在下一帧恢复滚动位置
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
     }
 
     /**
