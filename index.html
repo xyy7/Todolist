@@ -9,6 +9,15 @@
 </head>
 <body>
     <div class="container">
+        <div class="search-controls">
+            <div class="search-section" id="search-section">
+                <div class="search-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="search-input" placeholder="搜索待办事项..." autocomplete="off">
+                    <button type="button" id="search-clear" class="search-clear-btn" aria-label="清除搜索">×</button>
+                </div>
+            </div>
+        </div>
         <div class="filter-section">
             <div class="filter-buttons">
                 <button class="filter-btn active" data-filter="today">今天</button>
@@ -59,6 +68,9 @@
     </div>
     <button id="toggle-debug" class="debug-toggle-btn">显示调试面板</button>
     <button id="toggle-settings" class="settings-toggle-btn">设置</button>
+    
+    <!-- 搜索浮动按钮 -->
+    <button id="toggle-search" class="search-toggle-btn">🔍</button>
     
     <div id="settings-panel" class="settings-panel hidden">
         <div class="settings-panel-header">
