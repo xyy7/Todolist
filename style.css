@@ -580,3 +580,97 @@ border-bottom: none;
     font-size: 13px;
 }
 }
+
+/* 搜索控制样式 */
+.search-controls {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+/* 搜索浮动按钮样式 */
+.search-toggle-btn {
+    position: fixed;
+    right: 20px;
+    top: 20px;
+    z-index: 210;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.search-toggle-btn:hover {
+    background: #3367d6;
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.search-toggle-btn:active {
+    transform: scale(0.95);
+}
+
+/* 搜索框折叠/展开动画 */
+.search-section {
+    transition: all 0.3s ease;
+    max-height: 200px;
+    overflow: hidden;
+    opacity: 1;
+}
+
+.search-section.collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin-bottom: 0;
+    overflow: hidden;
+}
+
+.search-section.expanded {
+    max-height: 200px;
+    opacity: 1;
+    margin-bottom: 20px;
+}
+
+/* 响应式调整 */
+@media (max-width: 480px) {
+    .search-toggle-btn {
+        right: 15px;
+        top: 15px;
+        width: 45px;
+        height: 45px;
+        font-size: 20px;
+    }
+    
+    .search-section.expanded {
+        max-height: 180px;
+    }
+}
+
+/* 确保其他浮动按钮不重叠 */
+.debug-toggle-btn {
+    left: 10px;
+    bottom: 70px; /* 为搜索按钮留出空间 */
+}
+
+.settings-toggle-btn {
+    right: 10px;
+    bottom: 70px; /* 为搜索按钮留出空间 */
+}
+
+@media (max-width: 480px) {
+    .debug-toggle-btn {
+        bottom: 65px;
+    }
+    
+    .settings-toggle-btn {
+        bottom: 65px;
+    }
+}

@@ -69,6 +69,10 @@ class TodoApp {
         this.searchInput = document.getElementById('search-input');
         this.searchClearBtn = document.getElementById('search-clear');
         
+        // 搜索框切换控件
+        this.toggleSearchBtn = document.getElementById('toggle-search');
+        this.searchSection = document.getElementById('search-section');
+        
         // 初始化调试按钮状态
         const isDebugMode = localStorage.getItem('debugMode') === 'true';
         document.getElementById('toggle-debug').textContent =
@@ -184,6 +188,46 @@ class TodoApp {
                 this.updateClearButtonVisibility();
                 this.renderTodos();
                 this.searchInput.focus();
+            });
+        }
+
+        // 搜索框切换按钮事件监听
+        if (this.toggleSearchBtn && this.searchSection) {
+            // 初始化搜索框状态
+            const isSearchVisible = localStorage.getItem('searchVisible') !== 'false';
+            this.searchSection.classList.toggle('collapsed', !isSearchVisible);
+            this.searchSection.classList.toggle('expanded', isSearchVisible);
+            
+            this.toggleSearchBtn.addEventListener('click', () => {
+                const isCollapsed = this.searchSection.classList.contains('collapsed');
+                this.searchSection.classList.toggle('collapsed', !isCollapsed);
+                this.searchSection.classList.toggle('expanded', isCollapsed);
+                
+                if (isCollapsed) {
+                    // 如果展开，聚焦到搜索输入框
+                    setTimeout(() => {
+                        this.searchInput.focus();
+                    }, 100);
+                }
+                
+                // 保存状态到本地存储
+                localStorage.setItem('searchVisible', isCollapsed);
+                console.log(`[Search] 搜索框 ${isCollapsed ? '显示' : '隐藏'}`);
+            });
+            
+            // 键盘快捷键支持 (Ctrl+K 或 /)
+            document.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey && e.key === 'k') || e.key === '/') {
+                    e.preventDefault();
+                    this.toggleSearchBtn.click();
+                }
+                
+                // ESC键关闭搜索框
+                if (e.key === 'Escape' && this.searchSection.classList.contains('expanded')) {
+                    this.searchSection.classList.add('collapsed');
+                    this.searchSection.classList.remove('expanded');
+                    localStorage.setItem('searchVisible', 'false');
+                }
             });
         }
     }
