@@ -657,20 +657,20 @@ border-bottom: none;
 /* 确保其他浮动按钮不重叠 */
 .debug-toggle-btn {
     left: 10px;
-    bottom: 70px; /* 为搜索按钮留出空间 */
+    bottom: 10px; /* 恢复到底部 */
 }
 
 .settings-toggle-btn {
     right: 10px;
-    bottom: 70px; /* 为搜索按钮留出空间 */
+    bottom: 10px; /* 恢复到底部 */
 }
 
 @media (max-width: 480px) {
     .debug-toggle-btn {
-        bottom: 65px;
+        bottom: 10px;
     }
     
     .settings-toggle-btn {
-        bottom: 65px;
+        bottom: 10px;
     }
 }
