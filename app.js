@@ -1,4 +1,4 @@
-/**
+ /**
  * 待办事项应用主类
  * 功能:
  * - 管理待办任务列表(增删改查)
@@ -72,6 +72,9 @@ class TodoApp {
         // 搜索框切换控件
         this.toggleSearchBtn = document.getElementById('toggle-search');
         this.searchSection = document.getElementById('search-section');
+        
+        // 随机迁移按钮
+        this.randomTransferBtn = document.getElementById('random-transfer-btn');
         
         // 初始化调试按钮状态
         const isDebugMode = localStorage.getItem('debugMode') === 'true';
@@ -229,6 +232,11 @@ class TodoApp {
                     localStorage.setItem('searchVisible', 'false');
                 }
             });
+        }
+
+        // 随机迁移按钮事件
+        if (this.randomTransferBtn) {
+            this.randomTransferBtn.addEventListener('click', () => this.handleRandomTransfer());
         }
     }
 
@@ -679,6 +687,107 @@ class TodoApp {
         
         // 如果没有记住选择，显示转移确认对话框
         this.showTransferModal(unfinishedTasks, todayStr);
+    }
+
+    /**
+     * 从任务数组中随机挑选指定数量的任务
+     * @param {Array} tasks - 任务数组
+     * @param {number} count - 要挑选的数量
+     * @returns {Array} 随机挑选的任务数组
+     */
+    pickRandomTasks(tasks, count) {
+        if (tasks.length <= count) return [...tasks];
+        const shuffled = [...tasks];
+        // Fisher-Yates 洗牌算法
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled.slice(0, count);
+    }
+
+    /**
+     * 将指定任务列表的计划日期更新为今天
+     * @param {Array} tasks - 要转移的任务列表
+     * @param {string} todayStr - 今天的日期字符串(YYYY-MM-DD)
+     */
+    transferTasksToToday(tasks, todayStr) {
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 转移 ${tasks.length} 个任务到今日`);
+        tasks.forEach(task => {
+            console.log(`[DEBUG] 转移任务: ${task.content} (原日期: ${task.plannedTime})`);
+            task.plannedTime = todayStr;
+        });
+        this.saveTodos();
+        console.log(`[DEBUG] 保存后的任务列表:`, this.todos);
+        this.renderTodos();
+        console.log(`[DEBUG] 当前过滤器: ${this.currentFilter}, 渲染任务数: ${this.filterTodos().length}`);
+    }
+
+    /**
+     * 处理随机迁移按钮点击事件
+     * 从过去未完成的任务中随机挑选5个转移到今天
+     */
+    handleRandomTransfer() {
+        // 使用本地时区计算当前日期
+        const now = new Date();
+        const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+        const todayStr = today.toISOString().split('T')[0];
+        
+        // 获取所有未完成且计划日期为过去日期的任务
+        const unfinishedTasks = this.todos.filter(todo => {
+            if (!todo.completed && todo.plannedTime) {
+                const plannedDateStr = new Date(todo.plannedTime).toISOString().split('T')[0];
+                return plannedDateStr < todayStr;
+            }
+            return false;
+        });
+
+        if (unfinishedTasks.length === 0) {
+            // 没有过期任务时给出提示
+            const feedback = document.createElement('div');
+            feedback.textContent = '没有需要迁移的过期任务！';
+            feedback.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: var(--secondary-color, #34a853);
+                color: white;
+                padding: 10px 15px;
+                border-radius: 5px;
+                z-index: 1000;
+                font-size: 14px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            `;
+            document.body.appendChild(feedback);
+            setTimeout(() => feedback.remove(), 2000);
+            return;
+        }
+
+        // 随机挑选最多5个任务
+        const tasksToTransfer = this.pickRandomTasks(unfinishedTasks, 5);
+        
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 随机迁移: 从 ${unfinishedTasks.length} 个过期任务中挑选了 ${tasksToTransfer.length} 个`);
+        
+        // 转移任务到今天
+        this.transferTasksToToday(tasksToTransfer, todayStr);
+        
+        // 显示成功提示
+        const feedback = document.createElement('div');
+        feedback.textContent = `✅ 已随机迁移 ${tasksToTransfer.length} 个任务到今天！`;
+        feedback.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--secondary-color, #34a853);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            z-index: 1000;
+            font-size: 14px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        `;
+        document.body.appendChild(feedback);
+        setTimeout(() => feedback.remove(), 2000);
     }
 
     /**
