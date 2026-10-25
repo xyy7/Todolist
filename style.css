@@ -605,6 +605,32 @@ border-bottom: none;
     background-color: #3367d6;
 }
 
+.import-text {
+    flex: 1 1 100%;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 14px;
+    resize: vertical;
+}
+
+#import-file.hidden,
+#import-text.hidden,
+#import-text-confirm.hidden {
+    display: none;
+}
+
+.setting-hint {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #5f6368;
+}
+
 @media (max-width: 480px) {
 .settings-panel {
     width: 95%;

@@ -127,6 +127,18 @@
                     <button id="export-execute" class="export-btn">导出</button>
                 </div>
             </div>
+            <div class="setting-item">
+                <label>导入任务数据:</label>
+                <div class="export-controls">
+                    <input type="file" id="import-file" accept=".json,.txt,application/json,text/plain" class="hidden">
+                    <button id="import-file-btn" class="export-btn">选择文件导入</button>
+                    <button id="import-paste-btn" class="export-btn">粘贴文本导入</button>
+                </div>
+                <textarea id="import-text" class="import-text hidden" rows="5"
+                          placeholder="把导出的 JSON 或任务摘要粘贴到这里，再点「确认导入」"></textarea>
+                <button id="import-text-confirm" class="export-btn hidden">确认导入</button>
+                <p class="setting-hint">按任务 ID 合并：已有的任务更新，新任务追加，不会清空现有数据。摘要文本不含年份，日期会按最接近今天推断，建议优先用 JSON 文件导入。</p>
+            </div>
         </div>
     </div>
 

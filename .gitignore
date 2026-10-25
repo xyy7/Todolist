@@ -2,3 +2,4 @@ tasks/
 tests/
 *.apk
 *.jks
+*.idsig

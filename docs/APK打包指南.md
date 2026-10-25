@@ -164,6 +164,29 @@ powershell -ExecutionPolicy Bypass -File apk\build.ps1 `
 
 ---
 
+## 保留旧版数据升级（从旧 HBuilder 版本过来）
+
+安卓判断“是不是同一个 App”看两样东西：**包名**和**签名证书**。两者都相同、且新版本号不低于旧版，才能覆盖安装；覆盖安装时应用数据（包括待办）会保留。任一项不同，系统就当成另一个 App，必须先卸载旧版，数据也会一起删除。
+
+旧版 HBuilder 构建的 App 是包名 `plus.H5A9FAE40`、用 DCloud 云端证书签名。仓库里自己打包的 `todolist.apk` 是另一个包名（`com.worknlp.todolist`）和另一张证书，所以它不会覆盖旧版，也读不到旧版数据。
+
+要原地升级并自动保留数据，用 HBuilderX 重新云打包：
+
+1. 打开 HBuilderX，登录 DCloud 账号（登录过期时云打包会提示 `user not login`）。
+2. 把仓库里的 `index.html`、`style.css`、`app.js` 复制到旧 HBuilder 项目根目录；`manifest.json` 里把版本号改成 `1.1`、版本代码改成 `101`（必须大于旧版的 `100`）。
+3. 在 HBuilder 项目上右键选择“发行 → 原生App-云打包”，安卓包名填 `plus.H5A9FAE40`，证书选择“云端证书”，开始打包。
+4. 下载生成的 APK，直接覆盖安装到手机。桌面图标、应用名和原有待办都会保留。
+
+也可以用命令行（把项目路径换成你的旧项目目录）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File apk\pack-cloud.ps1 -ProjectPath "D:\你的旧项目\待办"
+```
+
+生成的 `todolist-upgrade.apk` 在仓库根目录。
+
+**如果暂时不想云打包**：在旧 App 里打开设置，导出 JSON（或复制任务摘要）→ 卸载旧版 → 安装 `todolist.apk` → 设置 → 导入任务数据 → 选择文件或粘贴文本。JSON 最准确；摘要文本不含年份，日期会按最接近今天推断。
+
 ## 常见问题
 
 **提示 `未找到 JDK` 或 `JAVA_HOME`**

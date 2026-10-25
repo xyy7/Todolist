@@ -66,6 +66,13 @@ class TodoApp {
         // 导出控件
         this.exportFormatSelect = document.getElementById('export-format');
         this.exportExecuteBtn = document.getElementById('export-execute');
+
+        // 导入控件
+        this.importFileInput = document.getElementById('import-file');
+        this.importFileBtn = document.getElementById('import-file-btn');
+        this.importPasteBtn = document.getElementById('import-paste-btn');
+        this.importTextArea = document.getElementById('import-text');
+        this.importTextConfirm = document.getElementById('import-text-confirm');
         
         // 搜索输入框
         this.searchInput = document.getElementById('search-input');
@@ -171,6 +178,38 @@ class TodoApp {
         // 导出按钮事件监听
         if (this.exportExecuteBtn) {
             this.exportExecuteBtn.addEventListener('click', () => this.handleExport());
+        }
+
+        // 导入：选择文件 / 粘贴文本
+        if (this.importFileBtn && this.importFileInput) {
+            this.importFileBtn.addEventListener('click', () => this.importFileInput.click());
+            this.importFileInput.addEventListener('change', () => {
+                const file = this.importFileInput.files && this.importFileInput.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    this.importFromText(String(reader.result || ''));
+                    this.importFileInput.value = '';
+                };
+                reader.onerror = () => alert('读取文件失败，请重试。');
+                reader.readAsText(file, 'utf-8');
+            });
+        }
+        if (this.importPasteBtn && this.importTextArea && this.importTextConfirm) {
+            this.importPasteBtn.addEventListener('click', () => {
+                const willShow = this.importTextArea.classList.contains('hidden');
+                this.importTextArea.classList.toggle('hidden', !willShow);
+                this.importTextConfirm.classList.toggle('hidden', !willShow);
+                if (willShow) this.importTextArea.focus();
+            });
+            this.importTextConfirm.addEventListener('click', () => {
+                const text = this.importTextArea.value;
+                if (!text.trim()) {
+                    alert('请先粘贴要导入的内容。');
+                    return;
+                }
+                this.importFromText(text);
+            });
         }
 
         // 搜索输入框事件监听
@@ -1193,16 +1232,129 @@ class TodoApp {
      */
     exportToJSON() {
         const data = JSON.stringify(this.todos, null, 2);
-        const blob = new Blob([data], { type: 'application/json' });
+        this.saveTextFile(this.buildExportName('json'), data, 'application/json');
+        console.log(`[Export] 已导出 ${this.todos.length} 个任务为JSON文件`);
+    }
+
+    /**
+     * 生成导出文件名（本地时区）
+     */
+    buildExportName(extension) {
+        const d = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        return `todo-export-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.${extension}`;
+    }
+
+    /**
+     * 显示一条短提示
+     */
+    showToast(text, duration = 2500) {
+        const feedback = document.createElement('div');
+        feedback.textContent = text;
+        feedback.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            max-width: 80vw;
+            background: var(--secondary-color, #34a853);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            z-index: 1000;
+            font-size: 14px;
+            line-height: 1.4;
+            white-space: normal;
+            word-break: break-all;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        `;
+        document.body.appendChild(feedback);
+        setTimeout(() => feedback.remove(), duration);
+    }
+
+    /**
+     * 是否运行在 HBuilder 打包的 App 内（有 plus 运行时）
+     */
+    isAppRuntime() {
+        return typeof window.plus !== 'undefined' && !!window.plus.io;
+    }
+
+    /**
+     * 保存文本文件：App 内写入系统「下载」目录，浏览器内用 Blob 下载。
+     * Android WebView 不支持 blob: 下载链接，所以不能只靠 <a download>。
+     */
+    saveTextFile(filename, content, mimeType) {
+        // 本地打包的 APK：由原生桥写入系统「下载」目录
+        if (window.AndroidBridge && typeof window.AndroidBridge.saveFile === 'function') {
+            try {
+                const path = window.AndroidBridge.saveFile(filename, content);
+                this.showToast(path ? `已保存：${path}` : '保存失败，请检查存储空间', 4000);
+            } catch (e) {
+                console.error('[Export] 原生保存失败:', e);
+                this.showToast('保存失败，请检查存储空间', 4000);
+            }
+            return;
+        }
+
+        if (this.isAppRuntime()) {
+            this.saveTextFileInApp(filename, content)
+                .then(path => this.showToast(`已保存：${path}`, 4000))
+                .catch(err => {
+                    console.error('[Export] App 内保存失败:', err);
+                    this.showToast('保存失败，请允许存储权限后重试', 4000);
+                });
+            return;
+        }
+
+        const blob = new Blob([content], { type: mimeType });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `todo-export-${new Date().toISOString().slice(0,10)}.json`;
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        console.log(`[Export] 已导出 ${this.todos.length} 个任务为JSON文件`);
+    }
+
+    /**
+     * 申请存储权限（旧版 Android 写公共目录需要）
+     */
+    requestStoragePermission() {
+        return new Promise((resolve, reject) => {
+            if (typeof plus === 'undefined' || !plus.android || !plus.android.requestPermissions) {
+                resolve();
+                return;
+            }
+            plus.android.requestPermissions(
+                ['android.permission.WRITE_EXTERNAL_STORAGE'],
+                result => {
+                    if (result.granted && result.granted.length) resolve();
+                    else reject(new Error('未获得存储权限'));
+                },
+                reject
+            );
+        });
+    }
+
+    /**
+     * 用 HBuilder 的 plus.io 写文件到「下载」目录
+     */
+    saveTextFileInApp(filename, content) {
+        return this.requestStoragePermission().then(() => new Promise((resolve, reject) => {
+            plus.io.requestFileSystem(plus.io.PUBLIC_DOWNLOADS, fs => {
+                fs.root.getFile(filename, { create: true }, entry => {
+                    entry.createWriter(writer => {
+                        writer.onerror = reject;
+                        // 先清空，避免同名文件残留上次的尾巴
+                        writer.onwrite = () => {
+                            writer.onwrite = () => resolve(entry.fullPath || filename);
+                            writer.write(content);
+                        };
+                        writer.truncate(0);
+                    }, reject);
+                }, reject);
+            }, reject);
+        }));
     }
 
     /**
@@ -1223,16 +1375,8 @@ class TodoApp {
             headers.join(','),
             ...rows.map(row => row.join(','))
         ].join('\n');
-        
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `todo-export-${new Date().toISOString().slice(0,10)}.csv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+
+        this.saveTextFile(this.buildExportName('csv'), csvContent, 'text/csv;charset=utf-8;');
         console.log(`[Export] 已导出 ${this.todos.length} 个任务为CSV文件`);
     }
 
@@ -1249,31 +1393,233 @@ class TodoApp {
             return `${status} ${pinned}${todo.content} - ${date}${completed}`;
         }).join('\n');
         
-        navigator.clipboard.writeText(summary)
+        // 剪贴板受系统限制（过大时粘贴会失败或被截断），数据多时引导改用文件
+        const sizeKB = Math.round(new Blob([summary]).size / 1024);
+        if (summary.length > 100000) {
+            alert(`任务数据较大（约 ${sizeKB} KB），剪贴板可能放不下或粘贴不完整。\n建议改用「导出 JSON 文件」，再在另一台设备选择文件导入。`);
+            return;
+        }
+
+        this.copyText(summary)
             .then(() => {
                 console.log('[Export] 任务摘要已复制到剪贴板');
-                // 显示一个简短的反馈
-                const feedback = document.createElement('div');
-                feedback.textContent = '已复制到剪贴板！';
-                feedback.style.cssText = `
-                    position: fixed;
-                    top: 20px;
-                    right: 20px;
-                    background: var(--secondary-color);
-                    color: white;
-                    padding: 10px 15px;
-                    border-radius: 5px;
-                    z-index: 1000;
-                    font-size: 14px;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-                `;
-                document.body.appendChild(feedback);
-                setTimeout(() => feedback.remove(), 2000);
+                this.showToast(`已复制到剪贴板！约 ${sizeKB} KB`);
             })
             .catch(err => {
                 console.error('[Export] 复制到剪贴板失败:', err);
-                alert('复制失败，请手动复制控制台输出。');
+                alert('复制失败，请改用导出文件。');
             });
+    }
+
+    /**
+     * 复制文本：优先 Clipboard API，失败时退回 execCommand / Android 剪贴板
+     */
+    copyText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text)
+                .catch(() => this.copyTextFallback(text));
+        }
+        return this.copyTextFallback(text);
+    }
+
+    copyTextFallback(text) {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            if (ok) return Promise.resolve();
+        } catch (e) {
+            console.warn('[Export] execCommand 复制失败:', e);
+        }
+
+        // App 内再退回 Android 原生剪贴板
+        if (this.isAppRuntime() && window.plus.android) {
+            try {
+                const main = plus.android.runtimeMainActivity();
+                const Context = plus.android.importClass('android.content.Context');
+                const clip = main.getSystemService(Context.CLIPBOARD_SERVICE);
+                plus.android.importClass(clip);
+                const ClipData = plus.android.importClass('android.content.ClipData');
+                clip.setPrimaryClip(ClipData.newPlainText('待办', text));
+                return Promise.resolve();
+            } catch (e) {
+                console.error('[Export] 原生剪贴板复制失败:', e);
+            }
+        }
+
+        return Promise.reject(new Error('clipboard unavailable'));
+    }
+
+    /**
+     * 处理导入文本：优先按 JSON 解析，失败后按任务摘要文本解析
+     */
+    importFromText(text) {
+        const input = String(text || '').trim();
+        if (!input) return;
+
+        let parsed = null;
+        try {
+            const data = JSON.parse(input);
+            parsed = Array.isArray(data) ? data : (data && Array.isArray(data.todos) ? data.todos : null);
+        } catch (e) {
+            parsed = null;
+        }
+
+        const result = parsed
+            ? this.normalizeImportedTodos(parsed)
+            : this.parseTodoSummary(input);
+
+        if (!result.todos.length) {
+            alert('没有识别到可导入的任务。请确认内容是本应用导出的 JSON 或任务摘要。');
+            return;
+        }
+
+        const existing = new Map(this.todos.map(todo => [String(todo.id), todo]));
+        let added = 0;
+        let updated = 0;
+        result.todos.forEach(todo => {
+            const prev = existing.get(todo.id);
+            if (prev) {
+                Object.assign(prev, todo);
+                updated++;
+            } else {
+                this.todos.push(todo);
+                existing.set(todo.id, todo);
+                added++;
+            }
+        });
+
+        this.saveTodos();
+        this.renderTodos();
+        alert(`导入完成：新增 ${added} 条，更新 ${updated} 条，跳过 ${result.skipped} 条。`);
+    }
+
+    /**
+     * 规范化 JSON 导入的任务，过滤无效数据并补齐字段
+     */
+    normalizeImportedTodos(list) {
+        const todos = [];
+        let skipped = 0;
+        list.forEach((raw, index) => {
+            if (!raw || typeof raw !== 'object') {
+                skipped++;
+                return;
+            }
+            const content = typeof raw.content === 'string' ? raw.content.trim() : '';
+            const plannedTime = this.normalizeImportDate(raw.plannedTime);
+            if (!content || !plannedTime) {
+                skipped++;
+                return;
+            }
+            const completed = !!raw.completed;
+            const completedTime = completed ? this.normalizeImportDateTime(raw.completedTime, plannedTime) : null;
+            const id = raw.id !== undefined && raw.id !== null && String(raw.id).trim()
+                ? String(raw.id)
+                : `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+            todos.push({
+                id,
+                content,
+                plannedTime,
+                completed,
+                completedTime,
+                pinned: !!raw.pinned && !completed
+            });
+        });
+        return { todos, skipped };
+    }
+
+    /**
+     * 解析「复制到剪贴板」得到的任务摘要（无年份，按最接近今天的日期推断）
+     */
+    parseTodoSummary(text) {
+        const todos = [];
+        let skipped = 0;
+        const linePattern = /^(✅|⬜)\s*(📌\s*)?(.+?)\s+-\s+(\d{1,2})月(\d{1,2})日\s+周[一二三四五六日](?:\s*\(完成于\s+(.+?)\))?$/;
+        const datePattern = /(\d{1,2})月(\d{1,2})日/;
+
+        text.split(/\r?\n/).forEach((line, index) => {
+            const line_ = line.trim();
+            if (!line_) return;
+            const match = line_.match(linePattern);
+            if (!match) {
+                skipped++;
+                return;
+            }
+            const completed = match[1] === '✅';
+            const plannedTime = this.guessLocalDate(Number(match[4]), Number(match[5]), false);
+            if (!plannedTime) {
+                skipped++;
+                return;
+            }
+            let completedTime = null;
+            if (completed) {
+                const completedMatch = match[6] && match[6].match(datePattern);
+                const completedDate = completedMatch
+                    ? this.guessLocalDate(Number(completedMatch[1]), Number(completedMatch[2]), true)
+                    : plannedTime;
+                completedTime = this.localDateToNoonIso(completedDate || plannedTime);
+            }
+            todos.push({
+                id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+                content: match[3].trim(),
+                plannedTime,
+                completed,
+                completedTime,
+                pinned: !!match[2] && !completed
+            });
+        });
+        return { todos, skipped };
+    }
+
+    normalizeImportDate(value) {
+        if (typeof value !== 'string') return null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return null;
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
+    normalizeImportDateTime(value, fallbackDate) {
+        const date = typeof value === 'string' || typeof value === 'number' ? new Date(value) : null;
+        if (date && !Number.isNaN(date.getTime())) return date.toISOString();
+        return this.localDateToNoonIso(fallbackDate);
+    }
+
+    /**
+     * 摘要文本没有年份：在前后一年中选择最接近今天的日期，
+     * 已完成时间则选择不晚于今天的最近日期。
+     */
+    guessLocalDate(month, day, preferPast) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        let best = null;
+        let bestDiff = Infinity;
+        for (let year = today.getFullYear() - 1; year <= today.getFullYear() + 1; year++) {
+            const date = new Date(year, month - 1, day);
+            if (date.getMonth() !== month - 1 || date.getDate() !== day) continue;
+            const diff = date.getTime() - today.getTime();
+            if (preferPast && diff > 86400000) continue;
+            if (Math.abs(diff) < bestDiff) {
+                best = date;
+                bestDiff = Math.abs(diff);
+            }
+        }
+        if (!best) {
+            const date = new Date(today.getFullYear(), month - 1, day);
+            if (date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+            best = date;
+        }
+        return `${best.getFullYear()}-${String(best.getMonth() + 1).padStart(2, '0')}-${String(best.getDate()).padStart(2, '0')}`;
+    }
+
+    localDateToNoonIso(localDate) {
+        const [year, month, day] = localDate.split('-').map(Number);
+        return new Date(year, month - 1, day, 12, 0, 0).toISOString();
     }
 
     /**
