@@ -51,6 +51,8 @@ class TodoApp {
         this.addBtn = document.getElementById('add-btn');
         this.pendingList = document.getElementById('pending-list');
         this.completedList = document.getElementById('completed-list');
+        this.pinnedSection = document.getElementById('pinned-section');
+        this.pinnedList = document.getElementById('pinned-list');
         this.filterButtons = document.querySelectorAll('.filter-btn');
         this.settingsBtn = document.getElementById('toggle-settings');
         this.settingsPanel = document.getElementById('settings-panel');
@@ -269,7 +271,8 @@ class TodoApp {
             content,
             plannedTime,
             completed: false,
-            completedTime: null
+            completedTime: null,
+            pinned: false
         };
         this.todos.push(newTodo);
         this.saveTodos();
@@ -296,20 +299,42 @@ class TodoApp {
         const scrollY = window.scrollY;
         todo.completed = !todo.completed;
         todo.completedTime = todo.completed ? new Date().toISOString() : null;
+        // 完成后自动取消置顶
+        if (todo.completed) todo.pinned = false;
         this.saveTodos();
-        // 检查是否是最后一个未完成任务被完成
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const todayTasks = this.todos.filter(todo => {
-            const [y, m, d] = todo.plannedTime.split('-').map(Number);
-            const plannedDate = new Date(y, m - 1, d);
-            return plannedDate >= today && plannedDate < new Date(today.getTime() + 86400000);
-        });
-        if (todayTasks.length > 0 && todayTasks.every(t => t.completed)) {
-            this.showEncouragement(todayTasks.length);
+        // 仅当完成的任务本身计划在今天时，才检查今日任务是否全部完成
+        if (todo.completed) {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const plannedDate = this.parseTodoDate(todo.plannedTime);
+            if (plannedDate.getTime() === today.getTime()) {
+                const todayTasks = this.todos.filter(t =>
+                    this.parseTodoDate(t.plannedTime).getTime() === today.getTime()
+                );
+                if (todayTasks.length > 0 && todayTasks.every(t => t.completed)) {
+                    this.showEncouragement(todayTasks.length);
+                }
+            }
         }
         this.renderTodos();
         // 在下一帧恢复滚动位置
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
+    }
+
+    /**
+     * 切换任务置顶状态
+     * @param {string} id - 任务ID
+     * 置顶任务会跨视图显示在所有列表顶部，按计划日期从早到晚排序
+     */
+    toggleTodoPin(id) {
+        const todo = this.todos.find(t => t.id === id);
+        if (!todo) return;
+        const scrollY = window.scrollY;
+        todo.pinned = !todo.pinned;
+        this.saveTodos();
+        this.renderTodos();
         requestAnimationFrame(() => {
             window.scrollTo(0, scrollY);
         });
@@ -410,7 +435,7 @@ class TodoApp {
 
         // 首先根据日期筛选
         const dateFiltered = this.todos.filter(todo => {
-            const plannedDate = new Date(todo.plannedTime);
+            const plannedDate = this.parseTodoDate(todo.plannedTime); // 本地时区解析日期
             
             switch(this.currentFilter) {
                 case 'today':
@@ -431,14 +456,17 @@ class TodoApp {
         });
 
         // 然后根据搜索词筛选
-        if (this.searchQuery) {
-            const query = this.searchQuery.toLowerCase();
-            return dateFiltered.filter(todo =>
-                todo.content.toLowerCase().includes(query)
-            );
-        }
-        
-        return dateFiltered;
+        return dateFiltered.filter(todo => this.matchesSearch(todo));
+    }
+
+    /**
+     * 判断任务内容是否匹配当前搜索词
+     * @param {Object} todo - 任务对象
+     * @returns {boolean} 匹配结果(无搜索词时始终为true)
+     */
+    matchesSearch(todo) {
+        if (!this.searchQuery) return true;
+        return todo.content.toLowerCase().includes(this.searchQuery);
     }
 
         /**
@@ -455,15 +483,31 @@ class TodoApp {
             // 清空待办和已完成列表
             this.pendingList.innerHTML = '';
             this.completedList.innerHTML = '';
-    
+            if (this.pinnedList) this.pinnedList.innerHTML = '';
+
             // 获取筛选后的任务并按状态分类
             const filteredTodos = this.filterTodos();
             console.log(`[DEBUG] 过滤后的任务:`, filteredTodos);
-            const pendingTodos = filteredTodos.filter(t => !t.completed)
+            // 置顶区容器缺失时，置顶任务回退到普通待办列表，避免任务凭空消失
+            const pinnedSectionAvailable = !!(this.pinnedSection && this.pinnedList);
+            // 置顶任务跨视图显示，按计划日期从早到晚排序
+            const pinnedTodos = pinnedSectionAvailable
+                ? this.todos
+                    .filter(t => t.pinned && !t.completed && this.matchesSearch(t))
+                    .sort((a, b) => new Date(a.plannedTime) - new Date(b.plannedTime))
+                : [];
+            const pinnedIds = new Set(pinnedTodos.map(t => t.id));
+            const pendingTodos = filteredTodos.filter(t => !t.completed && !pinnedIds.has(t.id))
                 .sort((a, b) => new Date(a.plannedTime) - new Date(b.plannedTime));
             const completedTodos = filteredTodos.filter(t => t.completed)
                 .sort((a, b) => new Date(b.completedTime) - new Date(a.completedTime));
-            console.log(`[DEBUG] 待办任务数: ${pendingTodos.length}, 已完成任务数: ${completedTodos.length}`);
+            console.log(`[DEBUG] 置顶任务数: ${pinnedTodos.length}, 待办任务数: ${pendingTodos.length}, 已完成任务数: ${completedTodos.length}`);
+
+            // 渲染置顶区(无置顶任务时隐藏)
+            if (this.pinnedSection && this.pinnedList) {
+                this.pinnedSection.classList.toggle('hidden', pinnedTodos.length === 0);
+                pinnedTodos.forEach(todo => this.renderTodo(todo, this.pinnedList));
+            }
     
             // 仅在本月筛选时显示月份标题，且只插入一行
             // 先检查并移除已存在的月份标题(避免重复添加)
@@ -518,21 +562,26 @@ class TodoApp {
             li.appendChild(checkbox);
             li.appendChild(content);
     
-            // 未完成事项显示计划时间
-            if (!todo.completed) {
-                const time = document.createElement('span');
-                time.className = 'todo-time';
-                time.textContent = this.formatTime(todo.plannedTime);
-                li.appendChild(time);
-            }
-            // 已完成事项显示完成时间
-            if (todo.completed) {
-                const time = document.createElement('span');
-                time.className = 'todo-time';
-                time.textContent = this.formatTime(todo.completedTime);
-                li.appendChild(time);
-            }
+            // 未完成事项显示计划时间，已完成事项显示完成时间
+            li.appendChild(this.createTimeElement(todo.completed ? todo.completedTime : todo.plannedTime));
     
+            // 添加置顶按钮(已完成任务不显示)
+            if (!todo.completed) {
+                const pinBtn = document.createElement('button');
+                pinBtn.className = 'pin-btn' + (todo.pinned ? ' pinned' : '');
+                pinBtn.type = 'button';
+                pinBtn.textContent = '📌';
+                pinBtn.title = todo.pinned ? '取消置顶' : '置顶';
+                pinBtn.setAttribute('aria-label', `置顶: ${todo.content}`);
+                pinBtn.setAttribute('aria-pressed', String(!!todo.pinned));
+                pinBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.toggleTodoPin(todo.id);
+                });
+                li.appendChild(pinBtn);
+            }
+
             // 添加删除按钮
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'delete-btn';
@@ -559,17 +608,78 @@ class TodoApp {
      */
     formatTime(isoString) {
         if (!isoString) return '';
-        // 只处理YYYY-MM-DD或ISO字符串
-        let date;
-        if (/^\d{4}-\d{2}-\d{2}$/.test(isoString)) {
-            const [y, m, d] = isoString.split('-').map(Number);
-            date = new Date(y, m - 1, d); // 本地时区日期对象
-        } else {
-            date = new Date(isoString); // 自动解析ISO字符串为本地时区
-        }
+        return this.formatFullDate(this.parseTodoDate(isoString));
+    }
+
+    /**
+     * 将Date对象格式化为完整日期
+     * @param {Date} date - 日期对象
+     * @returns {string} 如"7月10日 周四"
+     */
+    formatFullDate(date) {
         const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
         const weekday = weekdays[date.getDay()]; // 获取星期几(0-6)
-        return `${date.getMonth()+1}月${date.getDate()}日 ${weekday}`; // 格式化为"X月X日 周X"
+        return `${date.getMonth()+1}月${date.getDate()}日 ${weekday}`;
+    }
+
+    /**
+     * 格式化简短日期显示（窄屏使用）
+     * @param {string} isoString - 日期字符串(YYYY-MM-DD或ISO格式)
+     * @returns {string} 格式化后的日期字符串(如"10/25")
+     */
+    formatShortTime(isoString) {
+        if (!isoString) return '';
+        return this.formatShortDate(this.parseTodoDate(isoString));
+    }
+
+    /**
+     * 将Date对象格式化为简短日期
+     * @param {Date} date - 日期对象
+     * @returns {string} 如"7/10"
+     */
+    formatShortDate(date) {
+        return `${date.getMonth()+1}/${date.getDate()}`;
+    }
+
+    /**
+     * 解析任务日期字符串为本地时区Date对象
+     * @param {string} isoString - YYYY-MM-DD或ISO格式日期
+     * @returns {Date} 日期对象
+     */
+    parseTodoDate(isoString) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(isoString)) {
+            const [y, m, d] = isoString.split('-').map(Number);
+            return new Date(y, m - 1, d); // 本地时区日期对象
+        }
+        return new Date(isoString); // 自动解析ISO字符串为本地时区
+    }
+
+    /**
+     * 创建时间显示元素
+     * 同时输出完整日期和简短日期，窄屏时由CSS切换为简短格式
+     * @param {string} isoString - 要显示的日期
+     * @returns {HTMLElement} 时间显示元素
+     */
+    createTimeElement(isoString) {
+        const time = document.createElement('span');
+        time.className = 'todo-time';
+
+        const long = document.createElement('span');
+        long.className = 'time-long';
+
+        const short = document.createElement('span');
+        short.className = 'time-short';
+
+        // 只解析一次日期，同时生成宽屏/窄屏两种文本
+        if (isoString) {
+            const date = this.parseTodoDate(isoString);
+            long.textContent = this.formatFullDate(date);
+            short.textContent = this.formatShortDate(date);
+        }
+
+        time.appendChild(long);
+        time.appendChild(short);
+        return time;
     }
 
     /**
@@ -823,7 +933,7 @@ class TodoApp {
 
         // 过滤出指定时间段内的已完成任务
         const completedTasks = this.todos.filter(todo => {
-            const plannedDate = new Date(todo.plannedTime);
+            const plannedDate = this.parseTodoDate(todo.plannedTime);
             return todo.completed &&
                    plannedDate >= startDate &&
                    plannedDate <= endDate;
@@ -832,7 +942,7 @@ class TodoApp {
         if (completedTasks.length > 0) {
             // 移除已完成任务
             this.todos = this.todos.filter(todo => {
-                const plannedDate = new Date(todo.plannedTime);
+                const plannedDate = this.parseTodoDate(todo.plannedTime);
                 return !(todo.completed &&
                         plannedDate >= startDate &&
                         plannedDate <= endDate);
@@ -1097,16 +1207,17 @@ class TodoApp {
 
     /**
      * 导出任务数据为CSV文件
-     * 生成CSV格式的数据，包含表头：ID,内容,计划时间,完成状态,完成时间
+     * 生成CSV格式的数据，包含表头：ID,内容,计划时间,完成状态,完成时间,置顶
      */
     exportToCSV() {
-        const headers = ['ID', '内容', '计划时间', '完成状态', '完成时间'];
+        const headers = ['ID', '内容', '计划时间', '完成状态', '完成时间', '置顶'];
         const rows = this.todos.map(todo => [
             todo.id,
             `"${todo.content.replace(/"/g, '""')}"`, // 转义引号
             todo.plannedTime,
             todo.completed ? '是' : '否',
-            todo.completedTime || ''
+            todo.completedTime || '',
+            todo.pinned ? '是' : '否'
         ]);
         const csvContent = [
             headers.join(','),
@@ -1132,9 +1243,10 @@ class TodoApp {
     copyToClipboard() {
         const summary = this.todos.map(todo => {
             const status = todo.completed ? '✅' : '⬜';
+            const pinned = todo.pinned ? '📌 ' : '';
             const date = this.formatTime(todo.plannedTime);
             const completed = todo.completed ? ` (完成于 ${this.formatTime(todo.completedTime)})` : '';
-            return `${status} ${todo.content} - ${date}${completed}`;
+            return `${status} ${pinned}${todo.content} - ${date}${completed}`;
         }).join('\n');
         
         navigator.clipboard.writeText(summary)

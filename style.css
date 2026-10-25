@@ -256,8 +256,8 @@ li .todo-time {
 }
 
 li .delete-btn {
-    margin-left: 10px;
-    color: var(--danger-color);
+    margin-left: 16px;
+    color: #e06666; /* 比 --danger-color 淡，与白底对比度约 3.35:1，满足图标 3:1 下限 */
     background: none;
     border: none;
     cursor: pointer;
@@ -706,8 +706,78 @@ border-bottom: none;
     .debug-toggle-btn {
         bottom: 10px;
     }
-    
+
     .settings-toggle-btn {
         bottom: 10px;
+    }
+}
+
+/* 置顶任务样式 */
+.pinned-section.hidden {
+    display: none;
+}
+
+.pinned-title {
+    color: var(--primary-color);
+    font-size: 16px;
+    margin: 15px 0 8px;
+    padding-left: 8px;
+    border-left: 3px solid var(--primary-color);
+}
+
+.pinned-list {
+    margin-bottom: 20px;
+    padding: 0 8px;
+    background-color: #f8fbff;
+    border-radius: 6px;
+}
+
+.pinned-list li {
+    border-bottom: 1px solid #e3edf9;
+}
+
+.pinned-list li:last-child {
+    border-bottom: none;
+}
+
+.pin-btn {
+    margin-left: 8px;
+    padding: 8px 10px;
+    min-width: 32px;
+    min-height: 32px;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
+}
+
+.pin-btn:hover,
+.pin-btn:active {
+    opacity: 0.8;
+    background-color: #f0f0f0;
+    transform: scale(1.1);
+}
+
+.pin-btn.pinned {
+    opacity: 1;
+    background-color: rgba(66, 133, 244, 0.12);
+}
+
+/* 窄屏日期：隐藏"X月X日 周X"，改为"X/X" */
+.time-short {
+    display: none;
+}
+
+@media (max-width: 480px) {
+    .time-long {
+        display: none;
+    }
+
+    .time-short {
+        display: inline;
     }
 }
