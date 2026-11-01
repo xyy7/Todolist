@@ -62,7 +62,8 @@ Copy-Item (Join-Path $ScriptDir "src") (Join-Path $AppDir "src") -Recurse
 Copy-Item (Join-Path $ScriptDir "res") (Join-Path $AppDir "res") -Recurse
 
 # 网页资源：复制到 assets，并把 CDN 上的 confetti 换成本地文件
-foreach ($file in @("index.html", "style.css", "app.js")) {
+foreach ($file in @("index.html", "style.css", "app.js", "manifest.json", "sw.js",
+                    "icon-192.png", "icon-512.png", "apple-touch-icon.png")) {
     Copy-Item (Join-Path $RepoRoot $file) $AssetsDir
 }
 Copy-Item (Join-Path $ScriptDir "vendor\confetti.browser.min.js") $AssetsDir

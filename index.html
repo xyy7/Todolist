@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>移动端待办事项</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4285f4">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="待办">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 </head>
@@ -161,6 +169,16 @@
     </div>
 
     <script src="app.js"></script>
+    <script>
+        // 本地直接打开（file://）时不注册 Service Worker
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(error => {
+                    console.warn('Service Worker 注册失败:', error);
+                });
+            });
+        }
+    </script>
     <div id="encouragement" class="hidden">
         <p id="encouragement-text"></p>
     </div>
