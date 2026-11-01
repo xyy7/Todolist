@@ -24,6 +24,7 @@
                 <button class="filter-btn" data-filter="week">本周</button>
                 <button class="filter-btn" data-filter="month">本月</button>
                 <button class="filter-btn" data-filter="all">全部</button>
+                <button class="filter-btn" data-filter="standby">待机<span id="standby-count" class="standby-count hidden">0</span></button>
             </div>
         </div>
 
@@ -43,14 +44,17 @@
             </div>
 
             <div class="section-header">
-                <h2>待办事项</h2>
-                <button id="random-transfer-btn" class="random-transfer-btn">
-                    🎲 随机迁移5个
-                </button>
+                <h2 id="list-title">待办事项</h2>
+                <div class="header-actions">
+                    <button id="batch-mode-btn" class="batch-mode-btn" type="button">批量</button>
+                    <button id="random-transfer-btn" class="random-transfer-btn" type="button">
+                        🎲 随机迁移5个
+                    </button>
+                </div>
             </div>
             <ul id="pending-list"></ul>
 
-            <h2>已完成事项</h2>
+            <h2 id="completed-title">已完成事项</h2>
             <ul id="completed-list"></ul>
         </div>
     </div>
@@ -82,6 +86,20 @@
     <!-- 搜索浮动按钮 -->
     <button id="toggle-search" class="search-toggle-btn">🔍</button>
     
+    <div id="batch-bar" class="batch-bar hidden">
+        <div class="batch-bar-info">
+            <span id="batch-selected-count">已选 0</span>
+            <button id="batch-select-all" class="batch-bar-btn" type="button">全选</button>
+        </div>
+        <div class="batch-bar-actions">
+            <button id="batch-complete" class="batch-bar-btn" type="button">完成</button>
+            <button id="batch-pin" class="batch-bar-btn" type="button">置顶</button>
+            <button id="batch-standby" class="batch-bar-btn" type="button">待机</button>
+            <button id="batch-delete" class="batch-bar-btn danger" type="button">删除</button>
+            <button id="batch-exit" class="batch-bar-btn" type="button">退出</button>
+        </div>
+    </div>
+
     <div id="settings-panel" class="settings-panel hidden">
         <div class="settings-panel-header">
             <span>设置</span>

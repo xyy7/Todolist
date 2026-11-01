@@ -807,3 +807,170 @@ border-bottom: none;
         display: inline;
     }
 }
+
+/* ===== 待机视图与批量模式 ===== */
+.filter-btn {
+    width: auto;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.standby-count {
+    display: inline-block;
+    min-width: 16px;
+    margin-left: 3px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background-color: var(--danger-color);
+    color: #fff;
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+}
+
+.standby-count.hidden {
+    display: none;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.section-header h2 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.batch-mode-btn {
+    background-color: var(--light-gray);
+    color: #333;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.batch-mode-btn.active {
+    background-color: var(--primary-color);
+    color: #fff;
+}
+
+.batch-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 260;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    background-color: #fff;
+    border-top: 1px solid var(--border-color);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.12);
+}
+
+.batch-bar.hidden {
+    display: none;
+}
+
+#completed-title.hidden {
+    display: none;
+}
+
+.batch-bar-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    color: #555;
+}
+
+.batch-bar-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.batch-bar-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+    border: none;
+    border-radius: 6px;
+    background-color: var(--light-gray);
+    color: #333;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.batch-bar-btn.hidden {
+    display: none;
+}
+
+.batch-bar-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.batch-bar-btn.danger {
+    color: var(--danger-color);
+}
+
+body.batch-mode .debug-toggle-btn,
+body.batch-mode .settings-toggle-btn,
+body.batch-mode .search-toggle-btn {
+    display: none;
+}
+
+body.batch-mode .todos-container {
+    padding-bottom: 120px;
+}
+
+body.batch-mode li.selected {
+    background-color: #eef3ff;
+}
+
+body.batch-mode .pin-btn,
+body.batch-mode .delete-btn {
+    display: none;
+}
+
+body.batch-mode #encouragement {
+    bottom: 130px;
+}
+
+.empty-state {
+    justify-content: center;
+    color: #999;
+    font-size: 14px;
+    padding: 20px 0;
+}
+
+@media (max-width: 480px) {
+    .filter-btn {
+        font-size: 12px;
+        padding: 8px 2px;
+    }
+
+    .batch-bar-btn {
+        font-size: 12px;
+        padding: 8px 2px;
+    }
+
+    .random-transfer-btn {
+        padding: 6px 8px;
+    }
+}

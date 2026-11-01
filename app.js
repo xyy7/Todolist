@@ -10,6 +10,10 @@ class TodoApp {
     constructor() {
         this.todos = [];
         this.searchQuery = '';
+        // 批量模式状态
+        this.batchMode = false;
+        this.selectedIds = new Set();
+        this.visibleTodoIds = new Set();
         // 处理视图初始化逻辑
         const defaultView = localStorage.getItem('defaultView');
         const currentFilter = localStorage.getItem('currentFilter');
@@ -84,6 +88,20 @@ class TodoApp {
         
         // 随机迁移按钮
         this.randomTransferBtn = document.getElementById('random-transfer-btn');
+
+        // 批量模式控件
+        this.batchModeBtn = document.getElementById('batch-mode-btn');
+        this.batchBar = document.getElementById('batch-bar');
+        this.batchSelectedCount = document.getElementById('batch-selected-count');
+        this.batchSelectAllBtn = document.getElementById('batch-select-all');
+        this.batchCompleteBtn = document.getElementById('batch-complete');
+        this.batchPinBtn = document.getElementById('batch-pin');
+        this.batchStandbyBtn = document.getElementById('batch-standby');
+        this.batchDeleteBtn = document.getElementById('batch-delete');
+        this.batchExitBtn = document.getElementById('batch-exit');
+        this.standbyCountBadge = document.getElementById('standby-count');
+        this.listTitle = document.getElementById('list-title');
+        this.completedTitle = document.getElementById('completed-title');
         
         // 初始化调试按钮状态
         const isDebugMode = localStorage.getItem('debugMode') === 'true';
@@ -97,11 +115,7 @@ class TodoApp {
      * 注意: 使用本地时区，不考虑UTC
      */
     setDefaultDate() {
-        const now = new Date(); // 本地时区当前时间
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0'); // 月份补零
-        const day = String(now.getDate()).padStart(2, '0'); // 日期补零
-        this.todoDate.value = `${year}-${month}-${day}`; // 格式化为YYYY-MM-DD
+        this.todoDate.value = this.getTodayStr();
     }
 
     /**
@@ -111,7 +125,7 @@ class TodoApp {
      */
     checkDateChange() {
         const currentDate = this.todoDate.value;
-        const today = new Date().toISOString().split('T')[0];
+        const today = this.getTodayStr();
         if (currentDate !== today) {
             this.setDefaultDate();
         }
@@ -217,6 +231,7 @@ class TodoApp {
             const updateSearch = () => {
                 this.searchQuery = this.searchInput.value.trim().toLowerCase();
                 this.updateClearButtonVisibility();
+                this.clearSelection();
                 this.renderTodos();
             };
             this.searchInput.addEventListener('input', updateSearch);
@@ -230,6 +245,7 @@ class TodoApp {
                 this.searchInput.value = '';
                 this.searchQuery = '';
                 this.updateClearButtonVisibility();
+                this.clearSelection();
                 this.renderTodos();
                 this.searchInput.focus();
             });
@@ -279,6 +295,29 @@ class TodoApp {
         if (this.randomTransferBtn) {
             this.randomTransferBtn.addEventListener('click', () => this.handleRandomTransfer());
         }
+
+        // 批量模式事件
+        if (this.batchModeBtn) {
+            this.batchModeBtn.addEventListener('click', () => this.toggleBatchMode());
+        }
+        if (this.batchExitBtn) {
+            this.batchExitBtn.addEventListener('click', () => this.exitBatchMode());
+        }
+        if (this.batchSelectAllBtn) {
+            this.batchSelectAllBtn.addEventListener('click', () => this.toggleSelectAllVisible());
+        }
+        if (this.batchCompleteBtn) {
+            this.batchCompleteBtn.addEventListener('click', () => this.batchComplete());
+        }
+        if (this.batchPinBtn) {
+            this.batchPinBtn.addEventListener('click', () => this.batchTogglePin());
+        }
+        if (this.batchStandbyBtn) {
+            this.batchStandbyBtn.addEventListener('click', () => this.batchStandby());
+        }
+        if (this.batchDeleteBtn) {
+            this.batchDeleteBtn.addEventListener('click', () => this.batchDelete());
+        }
     }
 
     /**
@@ -311,7 +350,8 @@ class TodoApp {
             plannedTime,
             completed: false,
             completedTime: null,
-            pinned: false
+            pinned: false,
+            standby: false
         };
         this.todos.push(newTodo);
         this.saveTodos();
@@ -336,24 +376,14 @@ class TodoApp {
         if (!todo) return;
         // 保存当前滚动位置
         const scrollY = window.scrollY;
+        // 完成前记录今日活动任务是否已全部完成，避免重复鼓励
+        const wasAllDone = this.isAllTodayActiveDone();
         todo.completed = !todo.completed;
         todo.completedTime = todo.completed ? new Date().toISOString() : null;
-        // 完成后自动取消置顶
-        if (todo.completed) todo.pinned = false;
+        this.normalizeTodoState(todo);
         this.saveTodos();
-        // 仅当完成的任务本身计划在今天时，才检查今日任务是否全部完成
         if (todo.completed) {
-            const now = new Date();
-            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            const plannedDate = this.parseTodoDate(todo.plannedTime);
-            if (plannedDate.getTime() === today.getTime()) {
-                const todayTasks = this.todos.filter(t =>
-                    this.parseTodoDate(t.plannedTime).getTime() === today.getTime()
-                );
-                if (todayTasks.length > 0 && todayTasks.every(t => t.completed)) {
-                    this.showEncouragement(todayTasks.length);
-                }
-            }
+            this.maybeCelebrateToday([todo.id], wasAllDone);
         }
         this.renderTodos();
         // 在下一帧恢复滚动位置
@@ -370,6 +400,8 @@ class TodoApp {
     toggleTodoPin(id) {
         const todo = this.todos.find(t => t.id === id);
         if (!todo) return;
+        // 已完成或待机任务不允许置顶
+        if (todo.completed || todo.standby) return;
         const scrollY = window.scrollY;
         todo.pinned = !todo.pinned;
         this.saveTodos();
@@ -398,6 +430,320 @@ class TodoApp {
         // 在下一帧恢复滚动位置
         requestAnimationFrame(() => {
             window.scrollTo(0, scrollY);
+        });
+    }
+
+    /**
+     * 生成今天的本地日期字符串(YYYY-MM-DD)
+     */
+    getTodayStr() {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    /**
+     * 把任务计划时间转成本地日期字符串(YYYY-MM-DD)
+     * 兼容 YYYY-MM-DD 和历史 ISO 时间戳；无效日期返回空字符串
+     */
+    getTodoLocalDateStr(value) {
+        const raw = typeof value === 'string' ? value : (value && value.plannedTime);
+        if (!raw) return '';
+        const date = this.parseTodoDate(raw);
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    }
+
+    /**
+     * 获取所有过期未完成任务，排除待机任务
+     */
+    getOverdueUnfinishedTodos() {
+        const todayStr = this.getTodayStr();
+        return this.todos.filter(todo => {
+            if (todo.completed || todo.standby) return false;
+            const plannedDateStr = this.getTodoLocalDateStr(todo);
+            return plannedDateStr !== '' && plannedDateStr < todayStr;
+        });
+    }
+
+    /**
+     * 统一维护任务状态不变量：
+     * - 已完成任务不能待机或置顶
+     * - 待机任务不能置顶
+     */
+    normalizeTodoState(todo) {
+        todo.standby = todo.standby === true;
+        if (todo.completed) {
+            todo.standby = false;
+            todo.pinned = false;
+        } else if (todo.standby) {
+            todo.pinned = false;
+        }
+        return todo;
+    }
+
+    /**
+     * 今天是否还有未完成的非待机任务；当天没有活动任务时返回 false
+     */
+    isAllTodayActiveDone() {
+        const todayStr = this.getTodayStr();
+        const active = this.todos.filter(todo =>
+            !todo.standby && this.getTodoLocalDateStr(todo) === todayStr
+        );
+        return active.length > 0 && active.every(todo => todo.completed);
+    }
+
+    /**
+     * 从未全部完成变成全部完成时触发一次鼓励
+     * @param {Array<string>} completedIds - 本次完成的任务ID
+     * @param {boolean} wasAllDone - 修改前的状态
+     */
+    maybeCelebrateToday(completedIds, wasAllDone) {
+        if (wasAllDone || !this.isAllTodayActiveDone()) return;
+        const todayStr = this.getTodayStr();
+        const completedToday = completedIds.some(id => {
+            const todo = this.todos.find(t => t.id === id);
+            return todo && this.getTodoLocalDateStr(todo) === todayStr;
+        });
+        if (!completedToday) return;
+        const count = this.todos.filter(todo =>
+            !todo.standby && this.getTodoLocalDateStr(todo) === todayStr
+        ).length;
+        this.showEncouragement(count);
+    }
+
+    /**
+     * 进入/退出批量模式
+     */
+    toggleBatchMode() {
+        if (this.batchMode) {
+            this.exitBatchMode();
+            return;
+        }
+        const scrollY = window.scrollY;
+        this.batchMode = true;
+        this.selectedIds.clear();
+        document.body.classList.add('batch-mode');
+        if (this.batchModeBtn) {
+            this.batchModeBtn.textContent = '退出批量';
+            this.batchModeBtn.classList.add('active');
+        }
+        if (this.batchBar) this.batchBar.classList.remove('hidden');
+        this.renderTodos();
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
+    }
+
+    exitBatchMode() {
+        const scrollY = window.scrollY;
+        this.batchMode = false;
+        this.selectedIds.clear();
+        document.body.classList.remove('batch-mode');
+        if (this.batchModeBtn) {
+            this.batchModeBtn.textContent = '批量';
+            this.batchModeBtn.classList.remove('active');
+        }
+        if (this.batchBar) this.batchBar.classList.add('hidden');
+        this.renderTodos();
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
+    }
+
+    /**
+     * 清空批量选择
+     */
+    clearSelection() {
+        // 没有选择时无需扫描 DOM；后续 renderTodos 会重算按钮状态
+        if (!this.batchMode || this.selectedIds.size === 0) return;
+        this.selectedIds.clear();
+        this.refreshSelectionDom();
+        this.updateBatchBar();
+    }
+
+    /**
+     * 把选择集合收敛到当前实际渲染的任务
+     */
+    getScopedSelectedIds() {
+        const scoped = new Set();
+        this.selectedIds.forEach(id => {
+            if (this.visibleTodoIds.has(id)) scoped.add(id);
+        });
+        return scoped;
+    }
+
+    toggleSelect(id) {
+        if (!this.batchMode || !this.visibleTodoIds.has(id)) return;
+        if (this.selectedIds.has(id)) {
+            this.selectedIds.delete(id);
+        } else {
+            this.selectedIds.add(id);
+        }
+        this.refreshSelectionDom();
+        this.updateBatchBar();
+    }
+
+    toggleSelectAllVisible() {
+        const visibleIds = Array.from(this.visibleTodoIds);
+        const scoped = this.getScopedSelectedIds();
+        const allSelected = visibleIds.length > 0 && visibleIds.every(id => scoped.has(id));
+        if (allSelected) {
+            visibleIds.forEach(id => this.selectedIds.delete(id));
+        } else {
+            visibleIds.forEach(id => this.selectedIds.add(id));
+        }
+        this.refreshSelectionDom();
+        this.updateBatchBar();
+    }
+
+    /**
+     * 刷新列表行的选中样式，不整表重绘
+     */
+    refreshSelectionDom() {
+        document.querySelectorAll('#pending-list li, #completed-list li, #pinned-list li').forEach(li => {
+            const id = li.dataset.todoId;
+            if (!id) return;
+            const selected = this.batchMode && this.selectedIds.has(id);
+            li.classList.toggle('selected', selected);
+            li.setAttribute('aria-selected', selected ? 'true' : 'false');
+            const checkbox = li.querySelector('input[type="checkbox"]');
+            if (checkbox && this.batchMode) checkbox.checked = selected;
+        });
+    }
+
+    /**
+     * 更新底部批量操作栏和待机数量角标
+     */
+    /**
+     * 获取当前选中且满足条件的任务
+     */
+    getSelectedTodos(predicate) {
+        const scoped = this.getScopedSelectedIds();
+        return this.todos.filter(todo => scoped.has(todo.id) && predicate(todo));
+    }
+
+    getCompleteTargets() {
+        return this.getSelectedTodos(todo => !todo.completed);
+    }
+
+    getPinTargets() {
+        return this.getSelectedTodos(todo => !todo.completed && !todo.standby);
+    }
+
+    getStandbyTargets() {
+        const inStandbyView = this.currentFilter === 'standby';
+        return this.getSelectedTodos(todo =>
+            !todo.completed && (inStandbyView ? todo.standby : !todo.standby)
+        );
+    }
+
+    /**
+     * 统一执行批量修改：一次保存、一次渲染，并保持滚动位置
+     */
+    runBatchMutation(mutate, afterSave) {
+        const scrollY = window.scrollY;
+        mutate();
+        this.saveTodos();
+        if (afterSave) afterSave();
+        this.selectedIds.clear();
+        this.renderTodos();
+        requestAnimationFrame(() => {
+            window.scrollTo(0, scrollY);
+        });
+    }
+
+    updateBatchBar() {
+        if (this.standbyCountBadge) {
+            const standbyCount = this.todos.filter(todo => todo.standby && !todo.completed).length;
+            this.standbyCountBadge.textContent = String(standbyCount);
+            this.standbyCountBadge.classList.toggle('hidden', standbyCount === 0);
+        }
+        // 批量栏隐藏时无需计算各按钮状态
+        if (!this.batchMode) return;
+
+        const scoped = this.getScopedSelectedIds();
+        const count = scoped.size;
+        if (this.batchSelectedCount) {
+            this.batchSelectedCount.textContent = `已选 ${count}`;
+        }
+
+        const completeTargets = this.getCompleteTargets();
+        const pinTargets = this.getPinTargets();
+        const standbyTargets = this.getStandbyTargets();
+
+        if (this.batchCompleteBtn) this.batchCompleteBtn.disabled = completeTargets.length === 0;
+        if (this.batchDeleteBtn) this.batchDeleteBtn.disabled = count === 0;
+        if (this.batchPinBtn) {
+            this.batchPinBtn.classList.toggle('hidden', this.currentFilter === 'standby');
+            this.batchPinBtn.disabled = pinTargets.length === 0;
+            this.batchPinBtn.textContent = pinTargets.length > 0 && pinTargets.every(todo => todo.pinned)
+                ? '取消置顶'
+                : '置顶';
+        }
+        if (this.batchStandbyBtn) {
+            this.batchStandbyBtn.textContent = this.currentFilter === 'standby' ? '移出待机' : '待机';
+            this.batchStandbyBtn.disabled = standbyTargets.length === 0;
+        }
+        if (this.batchSelectAllBtn) {
+            const visibleIds = Array.from(this.visibleTodoIds);
+            const allSelected = visibleIds.length > 0 && visibleIds.every(id => scoped.has(id));
+            this.batchSelectAllBtn.textContent = allSelected ? '取消全选' : '全选';
+            this.batchSelectAllBtn.disabled = visibleIds.length === 0;
+        }
+    }
+
+    batchComplete() {
+        const targets = this.getCompleteTargets();
+        if (!targets.length) return;
+        const wasAllDone = this.isAllTodayActiveDone();
+        const completedTime = new Date().toISOString();
+        this.runBatchMutation(() => {
+            targets.forEach(todo => {
+                todo.completed = true;
+                todo.completedTime = completedTime;
+                this.normalizeTodoState(todo);
+            });
+        }, () => this.maybeCelebrateToday(targets.map(todo => todo.id), wasAllDone));
+    }
+
+    batchTogglePin() {
+        const targets = this.getPinTargets();
+        if (!targets.length) return;
+        const allPinned = targets.every(todo => todo.pinned);
+        this.runBatchMutation(() => {
+            targets.forEach(todo => {
+                todo.pinned = !allPinned;
+            });
+        });
+    }
+
+    batchStandby() {
+        const targets = this.getStandbyTargets();
+        if (!targets.length) return;
+        const inStandbyView = this.currentFilter === 'standby';
+        this.runBatchMutation(() => {
+            if (inStandbyView) {
+                const todayStr = this.getTodayStr();
+                targets.forEach(todo => {
+                    todo.standby = false;
+                    todo.plannedTime = todayStr;
+                    this.normalizeTodoState(todo);
+                });
+            } else {
+                targets.forEach(todo => {
+                    todo.standby = true;
+                    this.normalizeTodoState(todo);
+                });
+            }
+        });
+    }
+
+    batchDelete() {
+        const scoped = this.getScopedSelectedIds();
+        if (!scoped.size) return;
+        if (!window.confirm(`确定删除选中的 ${scoped.size} 个任务？`)) return;
+        this.runBatchMutation(() => {
+            this.todos = this.todos.filter(todo => !scoped.has(todo.id));
         });
     }
 
@@ -434,7 +780,9 @@ class TodoApp {
         this.filterButtons.forEach(btn => {
             btn.classList.toggle('active', btn.dataset.filter === actualFilter);
         });
-        
+
+        // 切换视图后清空批量选择，避免操作到不可见任务
+        this.clearSelection();
         this.renderTodos();
     }
 
@@ -472,8 +820,17 @@ class TodoApp {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
         const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
+        // 待机视图：只显示未完成的待机任务，忽略日期范围
+        if (this.currentFilter === 'standby') {
+            return this.todos.filter(todo =>
+                todo.standby && !todo.completed && this.matchesSearch(todo)
+            );
+        }
+
         // 首先根据日期筛选
         const dateFiltered = this.todos.filter(todo => {
+            // 待机任务只在待机视图显示
+            if (todo.standby) return false;
             const plannedDate = this.parseTodoDate(todo.plannedTime); // 本地时区解析日期
             
             switch(this.currentFilter) {
@@ -523,16 +880,19 @@ class TodoApp {
             this.pendingList.innerHTML = '';
             this.completedList.innerHTML = '';
             if (this.pinnedList) this.pinnedList.innerHTML = '';
+            // 记录本次实际渲染的任务，批量操作只作用于这些任务
+            this.visibleTodoIds = new Set();
 
+            const inStandbyView = this.currentFilter === 'standby';
             // 获取筛选后的任务并按状态分类
             const filteredTodos = this.filterTodos();
             console.log(`[DEBUG] 过滤后的任务:`, filteredTodos);
             // 置顶区容器缺失时，置顶任务回退到普通待办列表，避免任务凭空消失
             const pinnedSectionAvailable = !!(this.pinnedSection && this.pinnedList);
-            // 置顶任务跨视图显示，按计划日期从早到晚排序
-            const pinnedTodos = pinnedSectionAvailable
+            // 置顶任务跨视图显示，按计划日期从早到晚排序；待机视图不显示置顶区
+            const pinnedTodos = pinnedSectionAvailable && !inStandbyView
                 ? this.todos
-                    .filter(t => t.pinned && !t.completed && this.matchesSearch(t))
+                    .filter(t => t.pinned && !t.completed && !t.standby && this.matchesSearch(t))
                     .sort((a, b) => new Date(a.plannedTime) - new Date(b.plannedTime))
                 : [];
             const pinnedIds = new Set(pinnedTodos.map(t => t.id));
@@ -542,12 +902,19 @@ class TodoApp {
                 .sort((a, b) => new Date(b.completedTime) - new Date(a.completedTime));
             console.log(`[DEBUG] 置顶任务数: ${pinnedTodos.length}, 待办任务数: ${pendingTodos.length}, 已完成任务数: ${completedTodos.length}`);
 
-            // 渲染置顶区(无置顶任务时隐藏)
+            // 渲染置顶区(无置顶任务或待机视图时隐藏)
             if (this.pinnedSection && this.pinnedList) {
-                this.pinnedSection.classList.toggle('hidden', pinnedTodos.length === 0);
+                this.pinnedSection.classList.toggle('hidden', inStandbyView || pinnedTodos.length === 0);
                 pinnedTodos.forEach(todo => this.renderTodo(todo, this.pinnedList));
             }
-    
+
+            if (this.listTitle) {
+                this.listTitle.textContent = inStandbyView ? '待机事项' : '待办事项';
+            }
+            if (this.completedTitle) {
+                this.completedTitle.classList.toggle('hidden', inStandbyView);
+            }
+
             // 仅在本月筛选时显示月份标题，且只插入一行
             // 先检查并移除已存在的月份标题(避免重复添加)
             const prev = this.pendingList.previousElementSibling;
@@ -562,11 +929,25 @@ class TodoApp {
                 monthTitle.textContent = `${now.getFullYear()}年${now.getMonth() + 1}月`;
                 this.pendingList.before(monthTitle);
             }
-    
+
             // 渲染待办和已完成任务
             // pendingTodos.forEach(todo => this.renderTodo(todo, this.pendingList));
             pendingTodos.reverse().forEach(todo => this.renderTodo(todo, this.pendingList));
             completedTodos.forEach(todo => this.renderTodo(todo, this.completedList));
+
+            if (inStandbyView && pendingTodos.length === 0 && completedTodos.length === 0) {
+                const empty = document.createElement('li');
+                empty.className = 'empty-state';
+                empty.textContent = this.searchQuery ? '没有匹配的待机任务' : '暂无待机任务';
+                this.pendingList.appendChild(empty);
+            }
+
+            // 任何路径改变可见性后，把选择收敛到仍然可见的任务
+            this.selectedIds.forEach(id => {
+                if (!this.visibleTodoIds.has(id)) this.selectedIds.delete(id);
+            });
+
+            this.updateBatchBar();
         }
     
         /**
@@ -581,31 +962,49 @@ class TodoApp {
          */
         renderTodo(todo, list) {
             const li = document.createElement('li');
-            
-            // 创建复选框并绑定事件
+            li.dataset.todoId = todo.id;
+            const isSelected = this.batchMode && this.selectedIds.has(todo.id);
+            if (isSelected) li.classList.add('selected');
+            li.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+
+            // 创建复选框；批量模式下用于选择，普通模式下用于切换完成状态
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
-            checkbox.checked = todo.completed;
-            checkbox.addEventListener('change', () => this.toggleTodo(todo.id));
-            
+            if (this.batchMode) {
+                checkbox.checked = isSelected;
+                checkbox.addEventListener('click', (e) => e.stopPropagation());
+                checkbox.addEventListener('change', () => this.toggleSelect(todo.id));
+            } else {
+                checkbox.checked = todo.completed;
+                checkbox.addEventListener('change', () => this.toggleTodo(todo.id));
+            }
+
             // 创建任务内容显示区域（可编辑）
             const content = document.createElement('span');
             content.className = 'todo-content' + (todo.completed ? ' completed' : '');
             content.textContent = todo.content;
-            content.contentEditable = true; // 允许直接编辑
+            content.contentEditable = !this.batchMode; // 批量模式下不允许编辑
             content.addEventListener('blur', () => {
                 todo.content = content.textContent.trim();
                 this.saveTodos();
             });
-            
+
+            // 批量模式下点击整行选中/取消选中
+            if (this.batchMode) {
+                li.addEventListener('click', (e) => {
+                    if (e.target.closest('input, button')) return;
+                    this.toggleSelect(todo.id);
+                });
+            }
+
             li.appendChild(checkbox);
             li.appendChild(content);
-    
+
             // 未完成事项显示计划时间，已完成事项显示完成时间
             li.appendChild(this.createTimeElement(todo.completed ? todo.completedTime : todo.plannedTime));
-    
-            // 添加置顶按钮(已完成任务不显示)
-            if (!todo.completed) {
+
+            // 添加置顶按钮(已完成或待机任务不显示)
+            if (!todo.completed && !todo.standby) {
                 const pinBtn = document.createElement('button');
                 pinBtn.className = 'pin-btn' + (todo.pinned ? ' pinned' : '');
                 pinBtn.type = 'button';
@@ -631,9 +1030,10 @@ class TodoApp {
                 this.deleteTodo(todo.id);
             });
             li.appendChild(deleteBtn);
-    
-            // 将任务项添加到指定列表
+
+            // 将任务项添加到指定列表，并记录到可见集合
             list.appendChild(li);
+            this.visibleTodoIds.add(todo.id);
         }
 
     /**
@@ -755,86 +1155,23 @@ class TodoApp {
      * 2. 根据用户设置自动转移或显示确认对话框
      */
     checkYesterdayTasks() {
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 开始检查所有过去未完成任务`);
         const rememberChoice = localStorage.getItem('rememberChoice');
-        
-        // 统一处理自动转移设置，优先使用UI状态，其次使用存储值
         const autoTransfer = localStorage.getItem('autoTransfer');
-        
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 设置加载完成 - 记住选择: ${rememberChoice}, 自动转移: ${autoTransfer}`);
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 自动转移设置: ${autoTransfer}`);
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 是否记住选择: ${rememberChoice}`);
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 设置面板状态: ${this.rememberChoiceCheckbox?.checked}, 迁移面板状态: ${document.getElementById('remember-choice')?.checked}`);
-        
-        // 使用本地时区计算当前时间
-        const now = new Date();
-        const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-        console.log(`[DEBUG] 当前时间(本地): ${today.toISOString()}`);
-        
-        // 获取所有未完成且计划日期为过去日期的任务
-        const unfinishedTasks = this.todos.filter(todo => {
-            if (!todo.completed && todo.plannedTime) {
-                // 获取计划日期的YYYY-MM-DD格式
-                const plannedDateStr = new Date(todo.plannedTime).toISOString().split('T')[0];
-                // 获取当前日期的YYYY-MM-DD格式
-                const todayStr = today.toISOString().split('T')[0];
-                // 比较日期字符串
-                return plannedDateStr < todayStr;
-            }
-            return false;
-        });
 
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 检测到 ${unfinishedTasks.length} 个未完成任务`);
+        // 过期未完成任务：已排除待机任务，日期按本地时区判断
+        const unfinishedTasks = this.getOverdueUnfinishedTodos();
+        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 检测到 ${unfinishedTasks.length} 个过期未完成任务(已排除待机)`);
         if (unfinishedTasks.length === 0) return;
-        
-        // 如果记住选择，完全依赖设置面板中的autoTransfer设置
-        if (rememberChoice && rememberChoice === 'true') {
-            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 已记住选择，直接应用设置`);
+
+        const todayStr = this.getTodayStr();
+        if (rememberChoice === 'true') {
             if (autoTransfer === 'true') {
-                // 使用本地时区计算今日日期
-                const now = new Date();
-                const todayStr = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().split('T')[0];
-                console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 自动转移 ${unfinishedTasks.length} 个任务到今日`);
-                console.log(`[DEBUG] 今日日期(本地): ${todayStr}, 当前时间: ${now.toISOString()}`);
-                unfinishedTasks.forEach(task => {
-                    console.log(`[DEBUG] 转移任务: ${task.content} (原日期: ${task.plannedTime})`);
-                    task.plannedTime = todayStr;
-                    console.log(`[DEBUG] 新日期: ${task.plannedTime}, 本地时区验证: ${new Date(task.plannedTime).toLocaleDateString('zh-CN')}`);
-                });
-                this.saveTodos();
-                console.log(`[DEBUG] 保存后的任务列表:`, this.todos);
-                this.renderTodos();
-                console.log(`[DEBUG] 当前过滤器: ${this.currentFilter}, 渲染任务数: ${this.filterTodos().length}`);
+                this.transferTasksToToday(unfinishedTasks, todayStr);
             }
             return;
         }
 
-        // 如果没有记住选择，显示转移确认对话框
-        console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 检测到 ${unfinishedTasks.length} 个过去未完成任务`);
-        if (unfinishedTasks.length === 0) return;
-        
-        const todayStr = today.toISOString().split('T')[0];
-        
-        // 如果记住选择，完全依赖设置面板中的autoTransfer设置
-        if (rememberChoice && rememberChoice === 'true') {
-            console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 已记住选择，直接应用设置`);
-            if (autoTransfer === 'true') {
-                console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 自动转移 ${unfinishedTasks.length} 个任务到今日`);
-                console.log(`[DEBUG] 今日日期(本地): ${todayStr}, 当前时间: ${now.toISOString()}`);
-                unfinishedTasks.forEach(task => {
-                    console.log(`[DEBUG] 转移任务: ${task.content} (原日期: ${task.plannedTime})`);
-                    task.plannedTime = todayStr;
-                    console.log(`[DEBUG] 新日期: ${task.plannedTime}, 本地时区验证: ${new Date(task.plannedTime).toLocaleDateString('zh-CN')}`);
-                });
-                this.saveTodos();
-                console.log(`[DEBUG] 保存后的任务列表:`, this.todos);
-                this.renderTodos();
-                console.log(`[DEBUG] 当前过滤器: ${this.currentFilter}, 渲染任务数: ${this.filterTodos().length}`);
-            }
-            return;
-        }
-        
-        // 如果没有记住选择，显示转移确认对话框
+        // 没有记住选择时，显示转移确认对话框
         this.showTransferModal(unfinishedTasks, todayStr);
     }
 
@@ -877,19 +1214,10 @@ class TodoApp {
      * 从过去未完成的任务中随机挑选5个转移到今天
      */
     handleRandomTransfer() {
-        // 使用本地时区计算当前日期
-        const now = new Date();
-        const today = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-        const todayStr = today.toISOString().split('T')[0];
-        
-        // 获取所有未完成且计划日期为过去日期的任务
-        const unfinishedTasks = this.todos.filter(todo => {
-            if (!todo.completed && todo.plannedTime) {
-                const plannedDateStr = new Date(todo.plannedTime).toISOString().split('T')[0];
-                return plannedDateStr < todayStr;
-            }
-            return false;
-        });
+        const todayStr = this.getTodayStr();
+
+        // 过期未完成任务：已排除待机任务，日期按本地时区判断
+        const unfinishedTasks = this.getOverdueUnfinishedTodos();
 
         if (unfinishedTasks.length === 0) {
             // 没有过期任务时给出提示
@@ -917,7 +1245,8 @@ class TodoApp {
         
         console.log(`[DEBUG ${new Date().toLocaleString('zh-CN', {hour12: false})}] 随机迁移: 从 ${unfinishedTasks.length} 个过期任务中挑选了 ${tasksToTransfer.length} 个`);
         
-        // 转移任务到今天
+        // 转移任务到今天；迁移会改变可见性，先清空批量选择
+        this.clearSelection();
         this.transferTasksToToday(tasksToTransfer, todayStr);
         
         // 显示成功提示
@@ -1100,14 +1429,10 @@ class TodoApp {
 
         // "是"按钮点击事件 - 确认转移任务
         yesBtn.onclick = () => {
+            const todayStr = this.getTodayStr();
             // 遍历所有待转移任务
             tasks.forEach(task => {
-                // 处理时区问题: 获取本地时区的当前日期
-                const now = new Date();  // 当前时间(可能包含时区偏移)
-                // 计算本地时区日期(减去时区偏移分钟数)
-                const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-                // 更新任务计划时间为今天(格式化为YYYY-MM-DD)
-                task.plannedTime = localNow.toISOString().split('T')[0];
+                task.plannedTime = todayStr;
                 console.log('任务迁移:', task.content, '新日期:', task.plannedTime);
             });
 
@@ -1125,11 +1450,10 @@ class TodoApp {
 
             // 关闭对话框
             modal.style.display = 'none';
-            
-            // 重新渲染任务列表
-            this.renderTodos();
-            
-            // 强制刷新当前筛选条件显示
+
+            // 转移会改变可见性，切换/刷新视图前清空批量选择
+            this.selectedIds.clear();
+            // 强制刷新当前筛选条件显示（内部会重新渲染）
             this.setFilter(this.currentFilter);
         };
 
@@ -1359,17 +1683,18 @@ class TodoApp {
 
     /**
      * 导出任务数据为CSV文件
-     * 生成CSV格式的数据，包含表头：ID,内容,计划时间,完成状态,完成时间,置顶
+     * 生成CSV格式的数据，包含表头：ID,内容,计划时间,完成状态,完成时间,置顶,待机
      */
     exportToCSV() {
-        const headers = ['ID', '内容', '计划时间', '完成状态', '完成时间', '置顶'];
+        const headers = ['ID', '内容', '计划时间', '完成状态', '完成时间', '置顶', '待机'];
         const rows = this.todos.map(todo => [
             todo.id,
             `"${todo.content.replace(/"/g, '""')}"`, // 转义引号
             todo.plannedTime,
             todo.completed ? '是' : '否',
             todo.completedTime || '',
-            todo.pinned ? '是' : '否'
+            todo.pinned ? '是' : '否',
+            todo.standby ? '是' : '否'
         ]);
         const csvContent = [
             headers.join(','),
@@ -1387,10 +1712,11 @@ class TodoApp {
     copyToClipboard() {
         const summary = this.todos.map(todo => {
             const status = todo.completed ? '✅' : '⬜';
-            const pinned = todo.pinned ? '📌 ' : '';
+            const pinned = !todo.standby && todo.pinned ? '📌 ' : '';
+            const standby = todo.standby ? '💤 ' : '';
             const date = this.formatTime(todo.plannedTime);
             const completed = todo.completed ? ` (完成于 ${this.formatTime(todo.completedTime)})` : '';
-            return `${status} ${pinned}${todo.content} - ${date}${completed}`;
+            return `${status} ${standby}${pinned}${todo.content} - ${date}${completed}`;
         }).join('\n');
         
         // 剪贴板受系统限制（过大时粘贴会失败或被截断），数据多时引导改用文件
@@ -1485,15 +1811,21 @@ class TodoApp {
         result.todos.forEach(todo => {
             const prev = existing.get(todo.id);
             if (prev) {
+                const hasStandbyField = Object.prototype.hasOwnProperty.call(todo, 'standby');
+                const prevStandby = prev.standby === true;
                 Object.assign(prev, todo);
+                // 旧版 JSON 没有 standby 字段时不覆盖已有待机状态
+                if (!hasStandbyField && !prev.completed) prev.standby = prevStandby;
+                this.normalizeTodoState(prev);
                 updated++;
             } else {
-                this.todos.push(todo);
+                this.todos.push(this.normalizeTodoState(todo));
                 existing.set(todo.id, todo);
                 added++;
             }
         });
 
+        this.selectedIds.clear();
         this.saveTodos();
         this.renderTodos();
         alert(`导入完成：新增 ${added} 条，更新 ${updated} 条，跳过 ${result.skipped} 条。`);
@@ -1518,17 +1850,22 @@ class TodoApp {
             }
             const completed = !!raw.completed;
             const completedTime = completed ? this.normalizeImportDateTime(raw.completedTime, plannedTime) : null;
+            const hasStandbyField = Object.prototype.hasOwnProperty.call(raw, 'standby');
+            const standby = hasStandbyField && raw.standby === true && !completed;
             const id = raw.id !== undefined && raw.id !== null && String(raw.id).trim()
                 ? String(raw.id)
                 : `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`;
-            todos.push({
+            const todo = {
                 id,
                 content,
                 plannedTime,
                 completed,
                 completedTime,
-                pinned: !!raw.pinned && !completed
-            });
+                pinned: !!raw.pinned && !completed && !standby
+            };
+            // 源数据没有 standby 字段时不写入，导入合并时保留原状态
+            if (hasStandbyField) todo.standby = standby;
+            todos.push(todo);
         });
         return { todos, skipped };
     }
@@ -1539,7 +1876,7 @@ class TodoApp {
     parseTodoSummary(text) {
         const todos = [];
         let skipped = 0;
-        const linePattern = /^(✅|⬜)\s*(📌\s*)?(.+?)\s+-\s+(\d{1,2})月(\d{1,2})日\s+周[一二三四五六日](?:\s*\(完成于\s+(.+?)\))?$/;
+        const linePattern = /^(✅|⬜)\s*((?:📌|💤)\s*)?(.+?)\s+-\s+(\d{1,2})月(\d{1,2})日\s+周[一二三四五六日](?:\s*\(完成于\s+(.+?)\))?$/;
         const datePattern = /(\d{1,2})月(\d{1,2})日/;
 
         text.split(/\r?\n/).forEach((line, index) => {
@@ -1564,13 +1901,16 @@ class TodoApp {
                     : plannedTime;
                 completedTime = this.localDateToNoonIso(completedDate || plannedTime);
             }
+            const marker = (match[2] || '').trim();
+            const standby = marker === '💤' && !completed;
             todos.push({
                 id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
                 content: match[3].trim(),
                 plannedTime,
                 completed,
                 completedTime,
-                pinned: !!match[2] && !completed
+                pinned: marker === '📌' && !completed && !standby,
+                standby
             });
         });
         return { todos, skipped };
@@ -1650,7 +1990,7 @@ class TodoApp {
 
 // 初始化应用
 document.addEventListener('DOMContentLoaded', () => {
-    new TodoApp();
+    window.todoApp = new TodoApp();
 });
 
 // ====== 调试面板功能 ======
